@@ -20,7 +20,8 @@ export async function POST(req: Request) {
     temperature: 0,
     top_p: 1,
     frequency_penalty: 1,
-    presence_penalty: 1
+    presence_penalty: 1,
+    stop: '\n\n'
   })
 
   const stream = OpenAIStream(response)

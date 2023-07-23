@@ -17,10 +17,10 @@ export function Chat() {
 
   return (  
       <Card className="w-[400px]">
-        <CardHeader>
+        {/* <CardHeader>
           <CardTitle>LITA</CardTitle>
           <CardDescription>Tu asistente financiero</CardDescription>
-        </CardHeader>
+        </CardHeader> */}
           <CardContent>
             <ScrollArea className="h-[600px] w-full space-y-4 pr-4">          
               { messages.map(message => {

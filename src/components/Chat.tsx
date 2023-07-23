@@ -23,13 +23,13 @@ export function Chat() {
 	});
 
 	return (
-		<Card className='w-[400px] bg-slate-900 border border-indigo-500 '>
+		<Card className='w-[400px] bg-slate-900 p-4  '>
 			<CardContent>
-				<ScrollArea className='h-[600px] w-full space-y-4 pr-4 '>
+				<ScrollArea className='h-[600px] w-full space-y-4 p-4 border border-indigo-500 rounded-tl-3xl'>
 					{messages.map((message) => {
 						return (
 							<>
-								<div key={message.id} className='text-slate-600 text-sm mb-4 '>
+								<div key={message.id} className='text-slate-600 text-sm mb-4  '>
 									{/* {message.role === 'user' && (
 										<Avatar>
 											<AvatarFallback>US</AvatarFallback>
@@ -73,13 +73,16 @@ export function Chat() {
 				</ScrollArea>
 			</CardContent>
 			<CardFooter>
-				<form className='w-full flex gap-2' onSubmit={handleSubmit}>
+				<form
+					className='w-full flex flex-col gap-4 flex-grow'
+					onSubmit={handleSubmit}
+				>
 					<Input
 						type='text'
-						placeholder='Escribí tu consulta...'
+						placeholder='Escribí tu consulta financiera...'
 						value={input}
 						onChange={handleInputChange}
-						className='border rounded-lg px-4 py-2 w-full bg-gray-900 text-white'
+						className='border border-indigo-500 rounded-lg bg-slate-900 text-white'
 					/>
 					<Button className='bg-indigo-700 hover:bg-indigo-700' type='submit'>
 						Enviar

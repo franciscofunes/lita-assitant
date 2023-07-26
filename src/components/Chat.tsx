@@ -23,7 +23,7 @@ export function Chat() {
 	});
 
 	return (
-		<Card className='w-[400px] bg-slate-900 p-4  '>
+		<Card className='w-[400px] bg-slate-900 p-2'>
 			<CardContent>
 				<ScrollArea className='h-[600px] w-full space-y-4 p-4 border border-indigo-500 rounded-tl-3xl'>
 					{messages.map((message) => {

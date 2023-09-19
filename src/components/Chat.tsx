@@ -51,6 +51,22 @@ export function Chat() {
 		}
 	};
 
+	const handleCookieMessage = (event: MessageEvent) => {
+		if (event.data && event.data.type === 'setCookie') {
+			const cookie = event.data.cookie;
+
+			// Parse the cookie string to extract the name and value
+			const cookieParts = cookie.split('=');
+			if (cookieParts.length === 2) {
+				const cookieName = decodeURIComponent(cookieParts[0]);
+				const cookieValue = decodeURIComponent(cookieParts[1]);
+
+				// Example: Set the received cookie in your application
+				Cookies.set(cookieName, cookieValue);
+			}
+		}
+	};
+
 	const handleLastFiveExpensesClick = async () => {
 		try {
 			const lastFiveExpenses = await getLastFiveExpenses();
@@ -138,6 +154,16 @@ export function Chat() {
 
 			setUserInfo(parsedUserInfo);
 		}
+	}, []);
+
+	useEffect(() => {
+		// Add an event listener to listen for messages from the other application
+		window.addEventListener('message', handleCookieMessage);
+
+		return () => {
+			// Remove the event listener when the component unmounts
+			window.removeEventListener('message', handleCookieMessage);
+		};
 	}, []);
 
 	if (loading) {

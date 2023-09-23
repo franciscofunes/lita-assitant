@@ -111,7 +111,6 @@ export function Chat() {
 	useEffect(() => {
 		if (messages.length > chatHistory.length) {
 			// Update the chat history state with the entire messages object
-			console.log(messages);
 			setChatHistory([...messages]);
 
 			// Optionally, save the entire messages object to a history array

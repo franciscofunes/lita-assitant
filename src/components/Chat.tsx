@@ -95,8 +95,10 @@ export function Chat() {
 		try {
 			// Save the entire messages object to Firestore
 			const userContextCookie = Cookies.get('userContext');
-			if (!userContextCookie) {
-				throw new Error('User context cookie not found.');
+			const userContextSessionStorage = sessionStorage.getItem('userContext');
+
+			if (!userContextCookie || !userContextSessionStorage) {
+				throw new Error('User context cookie/session storage not found.');
 			}
 
 			const userContext = JSON.parse(decodeURIComponent(userContextCookie));
@@ -144,16 +146,16 @@ export function Chat() {
 		}
 	}, [messages]);
 
-	useEffect(() => {
-		const userCookie = Cookies.get('userContext');
+	// useEffect(() => {
+	// 	const userCookie = Cookies.get('userContext');
 
-		if (userCookie) {
-			const decodedUserCookie = decodeURIComponent(userCookie);
-			const parsedUserInfo: CookieValue = JSON.parse(decodedUserCookie);
+	// 	if (userCookie) {
+	// 		const decodedUserCookie = decodeURIComponent(userCookie);
+	// 		const parsedUserInfo: CookieValue = JSON.parse(decodedUserCookie);
 
-			setUserInfo(parsedUserInfo);
-		}
-	}, []);
+	// 		setUserInfo(parsedUserInfo);
+	// 	}
+	// }, []);
 
 	useEffect(() => {
 		// Add an event listener to listen for messages from the other application

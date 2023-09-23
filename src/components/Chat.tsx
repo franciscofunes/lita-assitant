@@ -165,6 +165,16 @@ export function Chat() {
 		};
 	}, []);
 
+	useEffect(() => {
+		const userContext = sessionStorage.getItem('userContext');
+
+		if (userContext) {
+			const parsedUserInfo: CookieValue = JSON.parse(userContext);
+
+			setUserInfo(parsedUserInfo);
+		}
+	}, []);
+
 	if (loading) {
 		return <CircleLoader />;
 	}

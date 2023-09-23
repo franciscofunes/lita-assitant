@@ -31,8 +31,6 @@ export interface UserInfo {
 
 export async function POST(req: Request) {
 	const userInfo: UserInfo = await req.json();
-	console.log(userInfo);
-
 	const statusCode = 200;
 	const message = 'User information sent!';
 

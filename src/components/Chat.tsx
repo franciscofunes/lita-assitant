@@ -6,7 +6,7 @@ import {
 	getAdvicePrompts,
 	getLastFiveExpenses,
 	saveChatHistory,
-} from '@/utils/firebaseUtils';
+} from '@/shared/utils/firebaseUtils';
 import { PaperPlaneIcon } from '@radix-ui/react-icons';
 import { Strong, Text } from '@radix-ui/themes';
 import { Message } from 'ai';
@@ -21,6 +21,8 @@ import { Card, CardContent, CardFooter } from './ui/card';
 import CircleLoader from './ui/circle-loader';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
+import { getUserContext } from '@/shared/utils/userContext';
+import { UserInfo } from '@/shared/models/UserInfo';
 
 const ASSITANT_PROMPT = '¿Quieres que continúe?';
 const NO_ANSWER = 'Adios LITA, ya podemos finalizar la conversación';
@@ -34,7 +36,7 @@ export function Chat() {
 	});
 
 	const [loading, setLoading] = useState(true);
-	const [userInfo, setUserInfo] = useState<CookieValue | null>(null);
+	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
 	const [advicesPrompts, setHardcodedOptions] = useState<AdvicePrompt[]>([]);
 	const [chatHistory, setChatHistory] = useState<Message[]>([]);
 
@@ -167,13 +169,22 @@ export function Chat() {
 		};
 	}, []);
 
+	// useEffect(() => {
+	// 	const userContext = sessionStorage.getItem('userContext');
+
+	// 	if (userContext) {
+	// 		const parsedUserInfo: CookieValue = JSON.parse(userContext);
+
+	// 		setUserInfo(parsedUserInfo);
+	// 	}
+	// }, []);
+
 	useEffect(() => {
-		const userContext = sessionStorage.getItem('userContext');
+		// Fetch user context data using the getter and set it in the state
+		const userContext = getUserContext();
 
 		if (userContext) {
-			const parsedUserInfo: CookieValue = JSON.parse(userContext);
-
-			setUserInfo(parsedUserInfo);
+			setUserInfo(userContext);
 		}
 	}, []);
 

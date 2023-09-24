@@ -8,7 +8,7 @@ import {
 	query,
 } from 'firebase/firestore';
 import Cookies from 'js-cookie';
-import { database } from '../../firebaseConfig';
+import { database } from '../../../firebaseConfig';
 
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { Message } from 'ai';

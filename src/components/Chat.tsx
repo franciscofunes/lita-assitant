@@ -6,6 +6,7 @@ import {
 	getAdvicePrompts,
 	getLastFiveExpenses,
 	getLastFiveExpensesWithCookie,
+	getLastFiveExpensesWithLocalStorage,
 	saveChatHistory,
 } from '@/shared/utils/firebaseUtils';
 import { PaperPlaneIcon } from '@radix-ui/react-icons';
@@ -89,6 +90,49 @@ export function Chat() {
 			}
 		} catch (error) {
 			console.error('Error fetching last five expenses:', error);
+		}
+	};
+
+	const handleLastFiveExpensesClickWithLocalStorage = async () => {
+		try {
+			const lastFiveExpenses = await getLastFiveExpensesWithLocalStorage();
+			// Retrieve the userContext from localStorage
+			const userContext = localStorage.getItem('userContext');
+
+			if (userContext) {
+				// Parse the userContext JSON string into an object
+				const userContextObject = JSON.parse(userContext);
+
+				if (
+					userContextObject.lastFiveExpenses &&
+					userContextObject.lastFiveExpenses.length >= 5
+				) {
+					let message = `Por favor, analiza mis últimas cinco transacciones y un consejo de economía doméstica teniéndolas en cuenta:\n\n`;
+					userContextObject.lastFiveExpenses.forEach(
+						(expense: any, index: any) => {
+							message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
+								expense.category
+							}, Nombre de la transacción: ${expense.expenseName}\n`;
+						}
+					);
+					append({ role: 'user', content: message });
+				} else {
+					// Handle the case where there are less than 5 expenses
+					append({
+						role: 'user',
+						content:
+							'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
+					});
+				}
+			} else {
+				// Handle the case where userContext is not found in localStorage
+				append({
+					role: 'user',
+					content: 'No se encontró el contexto del usuario en localStorage.',
+				});
+			}
+		} catch (error) {
+			console.error('Error fetching userContext from localStorage:', error);
 		}
 	};
 
@@ -185,7 +229,7 @@ export function Chat() {
 			});
 		}
 
-		// localStorage.setItem('userContext', JSON.stringify(userInfo));
+		localStorage.setItem('userContext', JSON.stringify(userInfo));
 	}, [messages]);
 
 	useEffect(() => {
@@ -351,7 +395,7 @@ export function Chat() {
 					<Button
 						className='bg-indigo-700 hover:bg-indigo-600 text-white px-2 py-1 rounded'
 						type='button'
-						onClick={handleLastFiveExpensesClick} // Call the function on button click
+						onClick={handleLastFiveExpensesClickWithLocalStorage} // Call the function on button click
 						style={{ minWidth: '120px', fontSize: '0.7rem' }}
 					>
 						Analizar mis últimas cinco transacciones

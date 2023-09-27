@@ -57,6 +57,52 @@ export async function getLastFiveExpensesWithCookie(): Promise<Expense[]> {
 	return lastFiveTransactions;
 }
 
+export async function getLastFiveExpensesWithLocalStorage(): Promise<
+	Expense[]
+> {
+	try {
+		// Retrieve the userContext from localStorage
+		const userContext = localStorage.getItem('userContext');
+
+		if (!userContext) {
+			throw new Error('User context not found in localStorage.');
+		}
+
+		// Parse the userContext as JSON to extract the UID
+		const userContextObject = JSON.parse(userContext);
+		const uid = userContextObject.uid;
+
+		// Query the user's transactions collection
+		const transactionsCollection = collection(
+			database,
+			'users',
+			uid,
+			'expenses'
+		);
+
+		// Create a query to get the last five transactions based on the date
+		const transactionQuery = query(
+			transactionsCollection,
+			orderBy('date', 'desc'), // Sort by date in descending order
+			limit(5) // Limit to the last five transactions
+		);
+
+		const querySnapshot = await getDocs(transactionQuery);
+
+		const lastFiveTransactions: Expense[] = querySnapshot.docs.map(
+			(doc: DocumentSnapshot) => doc.data() as Expense
+		);
+
+		return lastFiveTransactions;
+	} catch (error) {
+		console.error(
+			'Error fetching last five expenses from localStorage:',
+			error
+		);
+		throw error; // Re-throw the error to handle it elsewhere if needed
+	}
+}
+
 export async function getLastFiveExpenses(
 	userContext: UserInfo
 ): Promise<Expense[]> {

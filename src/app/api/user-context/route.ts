@@ -1,5 +1,6 @@
 import { UserInfo } from '@/shared/models/UserInfo';
 import { getUserContext, setUserContext } from '@/shared/utils/userContext';
+import { cookies } from 'next/headers';
 
 export async function POST(req: Request) {
 	const userInfo: UserInfo = await req.json();
@@ -8,6 +9,8 @@ export async function POST(req: Request) {
 
 	// Set the user context data in your userContext module
 	setUserContext(userInfo);
+
+	cookies().set('userContext', `${userInfo}`);
 
 	return new Response(message, {
 		status: statusCode,

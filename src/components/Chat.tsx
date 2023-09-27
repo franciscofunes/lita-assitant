@@ -1,6 +1,6 @@
 'use client';
 
-import { CookieValue } from '@/shared/models/CookieValue.model';
+import { UserInfo } from '@/shared/models/UserInfo';
 import { AdvicePrompt } from '@/shared/models/firebase.model';
 import {
 	getAdvicePrompts,
@@ -13,7 +13,6 @@ import { Message } from 'ai';
 import { useChat } from 'ai/react';
 import { motion } from 'framer-motion';
 import Cookies from 'js-cookie';
-import { ChatCompletionRequestMessageRoleEnum } from 'openai-edge';
 import { useEffect, useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
@@ -21,8 +20,6 @@ import { Card, CardContent, CardFooter } from './ui/card';
 import CircleLoader from './ui/circle-loader';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
-import { getUserContext } from '@/shared/utils/userContext';
-import { UserInfo } from '@/shared/models/UserInfo';
 
 const ASSITANT_PROMPT = '¿Quieres que continúe?';
 const NO_ANSWER = 'Adios LITA, ya podemos finalizar la conversación';

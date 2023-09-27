@@ -71,39 +71,54 @@ export function Chat() {
 
 	const handleLastFiveExpensesClick = async () => {
 		try {
-			const lastFiveExpenses = await getLastFiveExpenses();
-			if (lastFiveExpenses.length >= 5) {
-				let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo teniendolas en cuenta:\n\n`;
-				lastFiveExpenses.forEach((expense, index) => {
-					message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
-						expense.category
-					}, Nombre de la transacción: ${expense.expenseName}\n`;
-				});
-				append({ role: 'user', content: message });
+			const userContextResponse = await fetch('/api/user-context', {
+				method: 'GET',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+			});
+
+			if (userContextResponse.ok) {
+				const userContext = await userContextResponse.json();
+
+				const lastFiveExpenses = await getLastFiveExpenses(userContext); // Pass userContext as a parameter
+
+				if (lastFiveExpenses.length >= 5) {
+					let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo de economía doméstica teniéndolas en cuenta:\n\n`;
+					lastFiveExpenses.forEach((expense, index) => {
+						message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
+							expense.category
+						}, Nombre de la transacción: ${expense.expenseName}\n`;
+					});
+					append({ role: 'user', content: message });
+				} else {
+					// Handle the case where there are fewer than 5 expenses
+					append({
+						role: 'user',
+						content:
+							'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
+					});
+				}
 			} else {
-				// Handle the case where there are less than 5 expenses
-				append({
-					role: 'user',
-					content:
-						'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
-				});
+				console.error('Failed to fetch user context');
 			}
 		} catch (error) {
-			console.error('Error fetching last five expenses:', error);
+			console.error(
+				'Error fetching user context or last five expenses:',
+				error
+			);
 		}
 	};
 
-	const saveChatToHistory = async (messages: Message[]) => {
+	const saveChatToHistory = async (
+		messages: Message[],
+		userContext: UserInfo | null
+	) => {
 		try {
-			// Save the entire messages object to Firestore
-			const userContextCookie = Cookies.get('userContext');
-			const userContextSessionStorage = sessionStorage.getItem('userContext');
-
-			if (!userContextCookie || !userContextSessionStorage) {
-				throw new Error('User context cookie/session storage not found.');
+			if (!userContext) {
+				throw new Error('User context not found.');
 			}
 
-			const userContext = JSON.parse(decodeURIComponent(userContextCookie));
 			const uid = userContext.uid;
 
 			await saveChatHistory(uid, messages);
@@ -112,15 +127,15 @@ export function Chat() {
 		}
 	};
 
-	useEffect(() => {
-		if (messages.length > chatHistory.length) {
-			// Update the chat history state with the entire messages object
-			setChatHistory([...messages]);
+	// useEffect(() => {
+	// 	if (messages.length > chatHistory.length) {
+	// 		// Update the chat history state with the entire messages object
+	// 		setChatHistory([...messages]);
 
-			// Optionally, save the entire messages object to a history array
-			saveChatToHistory([...messages]);
-		}
-	}, [messages]);
+	// 		// Optionally, save the entire messages object to a history array
+	// 		saveChatToHistory([...messages]);
+	// 	}
+	// }, [messages]);
 
 	useEffect(() => {
 		const fetchOptions = async () => {
@@ -209,6 +224,7 @@ export function Chat() {
 					const userContext = await response.json();
 
 					setUserInfo(userContext);
+					saveChatToHistory(messages, userContext);
 					setLoading(false);
 				} else {
 					console.error('Failed to fetch user context');

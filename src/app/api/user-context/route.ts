@@ -1,5 +1,6 @@
 import { UserInfo } from '@/shared/models/UserInfo';
 import { getUserContext, setUserContext } from '@/shared/utils/userContext';
+import Cookies from 'js-cookie';
 
 export async function POST(req: Request) {
 	const userInfo: UserInfo = await req.json();
@@ -8,6 +9,9 @@ export async function POST(req: Request) {
 
 	// Set the user context data in your userContext module
 	setUserContext(userInfo);
+
+	// Save the user context in a cookie named "userContext"
+	Cookies.set('userContext', JSON.stringify(userInfo));
 
 	return new Response(message, {
 		status: statusCode,

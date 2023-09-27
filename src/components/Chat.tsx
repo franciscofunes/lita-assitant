@@ -5,6 +5,7 @@ import { AdvicePrompt } from '@/shared/models/firebase.model';
 import {
 	getAdvicePrompts,
 	getLastFiveExpenses,
+	getLastFiveExpensesWithCookie,
 	saveChatHistory,
 } from '@/shared/utils/firebaseUtils';
 import { PaperPlaneIcon } from '@radix-ui/react-icons';
@@ -50,19 +51,43 @@ export function Chat() {
 		}
 	};
 
-	const handleCookieMessage = (event: MessageEvent) => {
-		if (event.data && event.data.type === 'setCookie') {
-			const cookie = event.data.cookie;
+	// const handleCookieMessage = (event: MessageEvent) => {
+	// 	if (event.data && event.data.type === 'setCookie') {
+	// 		const cookie = event.data.cookie;
 
-			// Parse the cookie string to extract the name and value
-			const cookieParts = cookie.split('=');
-			if (cookieParts.length === 2) {
-				const cookieName = decodeURIComponent(cookieParts[0]);
-				const cookieValue = decodeURIComponent(cookieParts[1]);
+	// 		// Parse the cookie string to extract the name and value
+	// 		const cookieParts = cookie.split('=');
+	// 		if (cookieParts.length === 2) {
+	// 			const cookieName = decodeURIComponent(cookieParts[0]);
+	// 			const cookieValue = decodeURIComponent(cookieParts[1]);
 
-				// Example: Set the received cookie in your application
-				Cookies.set(cookieName, cookieValue);
+	// 			// Example: Set the received cookie in your application
+	// 			Cookies.set(cookieName, cookieValue);
+	// 		}
+	// 	}
+	// };
+
+	const handleLastFiveExpensesClickWithCookies = async () => {
+		try {
+			const lastFiveExpenses = await getLastFiveExpensesWithCookie();
+			if (lastFiveExpenses.length >= 5) {
+				let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo teniendolas en cuenta:\n\n`;
+				lastFiveExpenses.forEach((expense, index) => {
+					message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
+						expense.category
+					}, Nombre de la transacción: ${expense.expenseName}\n`;
+				});
+				append({ role: 'user', content: message });
+			} else {
+				// Handle the case where there are less than 5 expenses
+				append({
+					role: 'user',
+					content:
+						'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
+				});
 			}
+		} catch (error) {
+			console.error('Error fetching last five expenses:', error);
 		}
 	};
 
@@ -171,15 +196,15 @@ export function Chat() {
 	// 	}
 	// }, []);
 
-	useEffect(() => {
-		// Add an event listener to listen for messages from the other application
-		window.addEventListener('message', handleCookieMessage);
+	// useEffect(() => {
+	// 	// Add an event listener to listen for messages from the other application
+	// 	window.addEventListener('message', handleCookieMessage);
 
-		return () => {
-			// Remove the event listener when the component unmounts
-			window.removeEventListener('message', handleCookieMessage);
-		};
-	}, []);
+	// 	return () => {
+	// 		// Remove the event listener when the component unmounts
+	// 		window.removeEventListener('message', handleCookieMessage);
+	// 	};
+	// }, []);
 
 	// useEffect(() => {
 	// 	const userContext = sessionStorage.getItem('userContext');
@@ -323,7 +348,7 @@ export function Chat() {
 					<Button
 						className='bg-indigo-700 hover:bg-indigo-600 text-white px-2 py-1 rounded'
 						type='button'
-						onClick={handleLastFiveExpensesClick} // Call the function on button click
+						onClick={handleLastFiveExpensesClickWithCookies} // Call the function on button click
 						style={{ minWidth: '120px', fontSize: '0.7rem' }}
 					>
 						Analizar mis últimas cinco transacciones

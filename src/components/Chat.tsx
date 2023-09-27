@@ -185,7 +185,7 @@ export function Chat() {
 			});
 		}
 
-		localStorage.setItem('userContext', JSON.stringify(userInfo));
+		// localStorage.setItem('userContext', JSON.stringify(userInfo));
 	}, [messages]);
 
 	useEffect(() => {

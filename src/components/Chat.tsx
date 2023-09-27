@@ -179,13 +179,45 @@ export function Chat() {
 	// 	}
 	// }, []);
 
-	useEffect(() => {
-		// Fetch user context data using the getter and set it in the state
-		const userContext = getUserContext();
+	// useEffect(() => {
+	// 	const fetchUserContext = async () => {
+	// 		const userContext = getUserContext();
 
-		if (userContext) {
-			setUserInfo(userContext);
-		}
+	// 		console.log(userContext);
+
+	// 		if (userContext) {
+	// 			setUserInfo(userContext);
+	// 		}
+	// 	};
+
+	// 	// Call the fetchUserContext function when dependencies change
+	// 	fetchUserContext();
+	// }, [getUserContext, setUserInfo]);
+
+	// Inside your Chat component
+	useEffect(() => {
+		const fetchUserContext = async () => {
+			try {
+				const response = await fetch('/api/user-context', {
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+				});
+
+				if (response.ok) {
+					const userContext = await response.json();
+					setUserInfo(userContext);
+					setLoading(false);
+				} else {
+					console.error('Failed to fetch user context');
+				}
+			} catch (error) {
+				console.error('Error fetching user context:', error);
+			}
+		};
+
+		fetchUserContext();
 	}, []);
 
 	if (loading) {

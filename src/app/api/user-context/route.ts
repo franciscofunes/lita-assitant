@@ -21,6 +21,8 @@ export async function POST(req: Request) {
 			process.env.node_env === 'development' ? '.localhost' : '.vercel.app',
 	});
 
+	localStorage.setItem('userContext', `${userInfo}`);
+
 	return new Response(message, {
 		status: statusCode,
 		statusText: 'OK',

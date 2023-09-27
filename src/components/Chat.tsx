@@ -222,6 +222,8 @@ export function Chat() {
 
 				if (response.ok) {
 					const userContext = await response.json();
+					// Save the user context in a cookie named "userContext"
+					Cookies.set('userContext', JSON.stringify(userContext));
 
 					setUserInfo(userContext);
 					saveChatToHistory(messages, userContext);

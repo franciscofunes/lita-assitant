@@ -15,10 +15,11 @@ export async function POST(req: Request) {
 	cookies().set({
 		name: 'userContext',
 		value: `${userInfo}`,
-		secure: true,
+		secure: false,
 		path: '/',
 		domain:
 			process.env.node_env === 'development' ? '.localhost' : '.vercel.app',
+		httpOnly: true,
 	});
 
 	return new Response(message, {

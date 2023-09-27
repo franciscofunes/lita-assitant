@@ -349,7 +349,7 @@ export function Chat() {
 					<Button
 						className='bg-indigo-700 hover:bg-indigo-600 text-white px-2 py-1 rounded'
 						type='button'
-						onClick={handleLastFiveExpensesClickWithCookies} // Call the function on button click
+						onClick={handleLastFiveExpensesClick} // Call the function on button click
 						style={{ minWidth: '120px', fontSize: '0.7rem' }}
 					>
 						Analizar mis últimas cinco transacciones

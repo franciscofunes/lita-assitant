@@ -21,6 +21,7 @@ import { Card, CardContent, CardFooter } from './ui/card';
 import CircleLoader from './ui/circle-loader';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
+import { CookieValue } from '@/shared/models/CookieValue.model';
 
 const ASSITANT_PROMPT = '¿Quieres que continúe?';
 const NO_ANSWER = 'Adios LITA, ya podemos finalizar la conversación';
@@ -185,16 +186,16 @@ export function Chat() {
 		}
 	}, [messages]);
 
-	// useEffect(() => {
-	// 	const userCookie = Cookies.get('userContext');
+	useEffect(() => {
+		const userCookie = Cookies.get('userContext');
 
-	// 	if (userCookie) {
-	// 		const decodedUserCookie = decodeURIComponent(userCookie);
-	// 		const parsedUserInfo: CookieValue = JSON.parse(decodedUserCookie);
+		if (userCookie) {
+			const decodedUserCookie = decodeURIComponent(userCookie);
+			const parsedUserInfo: CookieValue = JSON.parse(decodedUserCookie);
 
-	// 		setUserInfo(parsedUserInfo);
-	// 	}
-	// }, []);
+			setUserInfo(parsedUserInfo);
+		}
+	}, []);
 
 	// useEffect(() => {
 	// 	// Add an event listener to listen for messages from the other application

@@ -72,7 +72,7 @@ export function Chat() {
 		try {
 			const lastFiveExpenses = await getLastFiveExpensesWithCookie();
 			if (lastFiveExpenses.length >= 5) {
-				let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo teniendolas en cuenta:\n\n`;
+				let message = `Por favor, analiza mis últimas cinco transacciones y un consejo de economía doméstica teniendolas en cuenta:\n\n`;
 				lastFiveExpenses.forEach((expense, index) => {
 					message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
 						expense.category

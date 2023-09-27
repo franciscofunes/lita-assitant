@@ -8,6 +8,7 @@ import {
 	query,
 } from 'firebase/firestore';
 import Cookies from 'js-cookie';
+import { cookies } from 'next/headers';
 import { database } from '../../../firebaseConfig';
 
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -29,6 +30,7 @@ export async function getAdvicePrompts(): Promise<AdvicePrompt[]> {
 export async function getLastFiveExpensesWithCookie(): Promise<Expense[]> {
 	// Parse the userContext cookie to extract the UID
 	const userContextCookie = Cookies.get('userContext');
+
 	if (!userContextCookie) {
 		throw new Error('User context cookie not found.');
 	}

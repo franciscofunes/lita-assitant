@@ -184,6 +184,8 @@ export function Chat() {
 				content: INITIAL_MESSAGE,
 			});
 		}
+
+		localStorage.setItem('userContext', JSON.stringify(userInfo));
 	}, [messages]);
 
 	useEffect(() => {
@@ -247,7 +249,6 @@ export function Chat() {
 					const userContext = await response.json();
 					// Save the user context in a cookie named "userContext"
 					Cookies.set('userContext', JSON.stringify(userContext));
-					localStorage.setItem('userContext', JSON.stringify(userContext));
 
 					setUserInfo(userContext);
 					saveChatToHistory(messages, userContext);

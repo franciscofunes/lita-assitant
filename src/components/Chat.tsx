@@ -207,6 +207,7 @@ export function Chat() {
 
 				if (response.ok) {
 					const userContext = await response.json();
+
 					setUserInfo(userContext);
 					setLoading(false);
 				} else {

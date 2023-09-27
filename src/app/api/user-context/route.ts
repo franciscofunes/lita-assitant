@@ -28,9 +28,7 @@ export async function GET(req: Request) {
 		}
 
 		const statusCode = 200;
-		const message = `User information retrieved:, ${JSON.stringify(
-			userContext
-		)} `;
+		const message = JSON.stringify(userContext);
 
 		return new Response(message, {
 			status: statusCode,

@@ -14,14 +14,14 @@ export async function POST(req: Request) {
 
 	cookies().set({
 		name: 'userContext',
-		value: `${userInfo}`,
+		value: 'test',
 		secure: true,
 		path: '/',
 		domain:
 			process.env.node_env === 'development' ? '.localhost' : '.vercel.app',
 	});
 
-	localStorage.setItem('userContext', `${userInfo}`);
+	localStorage.setItem('userContext', 'test');
 
 	return new Response(message, {
 		status: statusCode,

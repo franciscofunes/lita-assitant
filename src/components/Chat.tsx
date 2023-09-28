@@ -37,6 +37,10 @@ export function Chat() {
 
 	const [loading, setLoading] = useState(true);
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+	const [userLastFiveTransactions, setUserLastFiveTransactions] = useState<
+		any | null
+	>(null);
+
 	const [advicesPrompts, setHardcodedOptions] = useState<AdvicePrompt[]>([]);
 	const [chatHistory, setChatHistory] = useState<Message[]>([]);
 
@@ -53,71 +57,28 @@ export function Chat() {
 		}
 	};
 
-	// const handleCookieMessage = (event: MessageEvent) => {
-	// 	if (event.data && event.data.type === 'setCookie') {
-	// 		const cookie = event.data.cookie;
-
-	// 		// Parse the cookie string to extract the name and value
-	// 		const cookieParts = cookie.split('=');
-	// 		if (cookieParts.length === 2) {
-	// 			const cookieName = decodeURIComponent(cookieParts[0]);
-	// 			const cookieValue = decodeURIComponent(cookieParts[1]);
-
-	// 			// Example: Set the received cookie in your application
-	// 			Cookies.set(cookieName, cookieValue);
-	// 		}
-	// 	}
-	// };
-
-	// const handleLastFiveExpensesClickWithCookies = async () => {
-	// 	try {
-	// 		const lastFiveExpenses = await getLastFiveExpensesWithCookie();
-	// 		if (lastFiveExpenses.length >= 5) {
-	// 			let message = `Por favor, analiza mis últimas cinco transacciones y un consejo de economía doméstica teniendolas en cuenta:\n\n`;
-	// 			lastFiveExpenses.forEach((expense, index) => {
-	// 				message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
-	// 					expense.category
-	// 				}, Nombre de la transacción: ${expense.expenseName}\n`;
-	// 			});
-	// 			append({ role: 'user', content: message });
-	// 		} else {
-	// 			// Handle the case where there are less than 5 expenses
-	// 			append({
-	// 				role: 'user',
-	// 				content:
-	// 					'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
-	// 			});
-	// 		}
-	// 	} catch (error) {
-	// 		console.error('Error fetching last five expenses:', error);
-	// 	}
-	// };
-
-	const handleLastFiveExpensesClickWithLocalStorage = async () => {
+	const handleLastFiveExpensesClickWithEvent = () => {
 		try {
-			const userContext = localStorage.getItem('userContext');
-			const lastFiveExpenses = await getLastFiveExpensesWithLocalStorage();
-			// Retrieve the userContext from localStorage
+			window.parent.postMessage('getLastFiveUserTransactions', '*');
+			// Retrieve the userLastFiveTransactions from localStorage
+			const userLastFiveTransactions = localStorage.getItem(
+				'userLastFiveTransactions'
+			);
 
-			if (userContext) {
-				// Parse the userContext JSON string into an object
-				const userContextObject = JSON.parse(userContext);
+			if (userLastFiveTransactions) {
+				// Parse the userLastFiveTransactions JSON string into an array
+				const lastFiveExpenses = JSON.parse(userLastFiveTransactions);
 
-				if (
-					userContextObject.lastFiveExpenses &&
-					userContextObject.lastFiveExpenses.length >= 5
-				) {
-					let message = `Por favor, analiza mis últimas cinco transacciones y un consejo de economía doméstica teniéndolas en cuenta:\n\n`;
-					userContextObject.lastFiveExpenses.forEach(
-						(expense: any, index: any) => {
-							message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
-								expense.category
-							}, Nombre de la transacción: ${expense.expenseName}\n`;
-						}
-					);
+				if (lastFiveExpenses.length >= 5) {
+					let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo de economía doméstica teniéndolas en cuenta:\n\n`;
+					lastFiveExpenses.forEach((expense: any, index: any) => {
+						message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
+							expense.category
+						}, Nombre de la transacción: ${expense.expenseName}\n`;
+					});
 					append({ role: 'user', content: message });
 				} else {
-					// Handle the case where there are less than 5 expenses
+					// Handle the case where there are fewer than 5 expenses
 					append({
 						role: 'user',
 						content:
@@ -125,57 +86,20 @@ export function Chat() {
 					});
 				}
 			} else {
-				// Handle the case where userContext is not found in localStorage
+				// Handle the case where userLastFiveTransactions is not found in localStorage
 				append({
 					role: 'user',
-					content: 'No se encontró el contexto del usuario en localStorage.',
+					content:
+						'No se encontró el contexto de las últimas cinco transacciones en localStorage.',
 				});
 			}
 		} catch (error) {
-			console.error('Error fetching userContext from localStorage:', error);
+			console.error(
+				'Error fetching userLastFiveTransactions from localStorage:',
+				error
+			);
 		}
 	};
-
-	// const handleLastFiveExpensesClick = async () => {
-	// 	try {
-	// 		const userContextResponse = await fetch('/api/user-context', {
-	// 			method: 'GET',
-	// 			headers: {
-	// 				'Content-Type': 'application/json',
-	// 			},
-	// 		});
-
-	// 		if (userContextResponse.ok) {
-	// 			const userContext = await userContextResponse.json();
-
-	// 			const lastFiveExpenses = await getLastFiveExpenses(userContext); // Pass userContext as a parameter
-
-	// 			if (lastFiveExpenses.length >= 5) {
-	// 				let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo de economía doméstica teniéndolas en cuenta:\n\n`;
-	// 				lastFiveExpenses.forEach((expense, index) => {
-	// 					message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
-	// 						expense.category
-	// 					}, Nombre de la transacción: ${expense.expenseName}\n`;
-	// 				});
-	// 				append({ role: 'user', content: message });
-	// 			} else {
-	// 				// Handle the case where there are fewer than 5 expenses
-	// 				append({
-	// 					role: 'user',
-	// 					content:
-	// 						'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
-	// 				});
-	// 			}
-	// 		} else {
-	// 			console.error('Failed to fetch user context');
-	// 		}
-	// 	} catch (error) {
-	// 		console.error(
-	// 			'Error fetching user context or last five expenses:',
-	// 			error
-	// 		);
-	// 	}
-	// };
 
 	const saveChatToHistory = async (
 		messages: Message[],
@@ -229,27 +153,6 @@ export function Chat() {
 			});
 		}
 	}, [messages]);
-
-	// useEffect(() => {
-	// 	const userCookie = Cookies.get('userContext');
-
-	// 	if (userCookie) {
-	// 		const decodedUserCookie = decodeURIComponent(userCookie);
-	// 		const parsedUserInfo: CookieValue = JSON.parse(decodedUserCookie);
-
-	// 		setUserInfo(parsedUserInfo);
-	// 	}
-	// }, []);
-
-	// useEffect(() => {
-	// 	// Add an event listener to listen for messages from the other application
-	// 	window.addEventListener('message', handleCookieMessage);
-
-	// 	return () => {
-	// 		// Remove the event listener when the component unmounts
-	// 		window.removeEventListener('message', handleCookieMessage);
-	// 	};
-	// }, []);
 
 	// useEffect(() => {
 	// 	const userContext = sessionStorage.getItem('userContext');
@@ -306,6 +209,35 @@ export function Chat() {
 		};
 
 		fetchUserContext();
+	}, []);
+
+	useEffect(() => {
+		const fetchUserLastFiveTransactions = async () => {
+			try {
+				const response = await fetch('/api/user-transactions', {
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+				});
+
+				if (response.ok) {
+					const lastFiveTransactions = await response.json();
+
+					setUserLastFiveTransactions(lastFiveTransactions);
+					localStorage.setItem(
+						'userLastFiveTransactions',
+						JSON.stringify(lastFiveTransactions)
+					);
+				} else {
+					console.error('Failed to fetch user context');
+				}
+			} catch (error) {
+				console.error('Error fetching user context:', error);
+			}
+		};
+
+		fetchUserLastFiveTransactions();
 	}, []);
 
 	if (loading) {
@@ -395,7 +327,7 @@ export function Chat() {
 					<Button
 						className='bg-indigo-700 hover:bg-indigo-600 text-white px-2 py-1 rounded'
 						type='button'
-						onClick={handleLastFiveExpensesClickWithLocalStorage} // Call the function on button click
+						onClick={handleLastFiveExpensesClickWithEvent} // Call the function on button click
 						style={{ minWidth: '120px', fontSize: '0.7rem' }}
 					>
 						Analizar mis últimas cinco transacciones

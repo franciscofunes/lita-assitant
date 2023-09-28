@@ -101,22 +101,22 @@ export function Chat() {
 		}
 	};
 
-	const saveChatToHistory = async (
-		messages: Message[],
-		userContext: UserInfo | null
-	) => {
-		try {
-			if (!userContext) {
-				throw new Error('User context not found.');
-			}
+	// const saveChatToHistory = async (
+	// 	messages: Message[],
+	// 	userContext: UserInfo | null
+	// ) => {
+	// 	try {
+	// 		if (!userContext) {
+	// 			throw new Error('User context not found.');
+	// 		}
 
-			const uid = userContext.uid;
+	// 		const uid = userContext.uid;
 
-			await saveChatHistory(uid, messages);
-		} catch (error) {
-			console.error('Error handling the chat:', error);
-		}
-	};
+	// 		await saveChatHistory(uid, messages);
+	// 	} catch (error) {
+	// 		console.error('Error handling the chat:', error);
+	// 	}
+	// };
 
 	// useEffect(() => {
 	// 	if (messages.length > chatHistory.length) {
@@ -128,14 +128,38 @@ export function Chat() {
 	// 	}
 	// }, [messages]);
 
+	// useEffect(() => {
+	// 	const fetchOptions = async () => {
+	// 		try {
+	// 			setLoading(true);
+	// 			const options = await getAdvicePrompts().then((response) => {
+	// 				setHardcodedOptions(response);
+	// 				setLoading(false);
+	// 			});
+	// 		} catch (error) {
+	// 			console.error('Error fetching advices prompts:', error);
+	// 			setLoading(false);
+	// 		}
+	// 	};
+
+	// 	fetchOptions();
+	// }, []);
+
 	useEffect(() => {
 		const fetchOptions = async () => {
 			try {
 				setLoading(true);
-				const options = await getAdvicePrompts().then((response) => {
-					setHardcodedOptions(response);
-					setLoading(false);
-				});
+
+				// Make a GET request to your endpoint
+				const response = await fetch('/api/advices-prompts');
+
+				if (!response.ok) {
+					throw new Error(`HTTP error! Status: ${response.status}`);
+				}
+
+				const options = await response.json();
+				setHardcodedOptions(options);
+				setLoading(false);
 			} catch (error) {
 				console.error('Error fetching advices prompts:', error);
 				setLoading(false);

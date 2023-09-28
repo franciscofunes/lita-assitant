@@ -10,19 +10,6 @@ export async function POST(req: Request) {
 	// Set the user context data in your userContext module
 	setUserContext(userInfo);
 
-	// cookies().set('userContext', JSON.stringify(userInfo));
-
-	// cookies().set({
-	// 	name: 'userContext',
-	// 	value: JSON.stringify(userInfo),
-	// 	secure: true,
-	// 	path: '/',
-	// 	domain:
-	// 		process.env.node_env === 'development' ? '.localhost' : '.vercel.app',
-	// });
-
-	// localStorage.setItem('userContext', JSON.stringify(userInfo));
-
 	return new Response(message, {
 		status: statusCode,
 		statusText: 'OK',

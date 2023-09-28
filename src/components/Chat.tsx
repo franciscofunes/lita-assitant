@@ -2,13 +2,6 @@
 
 import { UserInfo } from '@/shared/models/UserInfo';
 import { AdvicePrompt } from '@/shared/models/firebase.model';
-import {
-	getAdvicePrompts,
-	getLastFiveExpenses,
-	getLastFiveExpensesWithCookie,
-	getLastFiveExpensesWithLocalStorage,
-	saveChatHistory,
-} from '@/shared/utils/firebaseUtils';
 import { PaperPlaneIcon } from '@radix-ui/react-icons';
 import { Strong, Text } from '@radix-ui/themes';
 import { Message } from 'ai';
@@ -22,7 +15,6 @@ import { Card, CardContent, CardFooter } from './ui/card';
 import CircleLoader from './ui/circle-loader';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
-import { CookieValue } from '@/shared/models/CookieValue.model';
 
 const ASSITANT_PROMPT = '¿Quieres que continúe?';
 const NO_ANSWER = 'Adios LITA, ya podemos finalizar la conversación';
@@ -151,7 +143,12 @@ export function Chat() {
 				setLoading(true);
 
 				// Make a GET request to your endpoint
-				const response = await fetch('/api/advices-prompts');
+				const response = await fetch('/api/advices-prompts', {
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+				});
 
 				if (!response.ok) {
 					throw new Error(`HTTP error! Status: ${response.status}`);

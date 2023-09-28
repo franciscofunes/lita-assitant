@@ -1,6 +1,6 @@
 import { UserInfo } from '@/shared/models/UserInfo';
 import { getUserContext, setUserContext } from '@/shared/utils/userContext';
-import { cookies } from 'next/headers';
+// import { cookies } from 'next/headers';
 
 export async function POST(req: Request) {
 	const userInfo: UserInfo = await req.json();
@@ -12,16 +12,16 @@ export async function POST(req: Request) {
 
 	// cookies().set('userContext', JSON.stringify(userInfo));
 
-	cookies().set({
-		name: 'userContext',
-		value: JSON.stringify(userInfo),
-		secure: true,
-		path: '/',
-		domain:
-			process.env.node_env === 'development' ? '.localhost' : '.vercel.app',
-	});
+	// cookies().set({
+	// 	name: 'userContext',
+	// 	value: JSON.stringify(userInfo),
+	// 	secure: true,
+	// 	path: '/',
+	// 	domain:
+	// 		process.env.node_env === 'development' ? '.localhost' : '.vercel.app',
+	// });
 
-	localStorage.setItem('userContext', JSON.stringify(userInfo));
+	// localStorage.setItem('userContext', JSON.stringify(userInfo));
 
 	return new Response(message, {
 		status: statusCode,

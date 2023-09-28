@@ -14,7 +14,7 @@ import { Strong, Text } from '@radix-ui/themes';
 import { Message } from 'ai';
 import { useChat } from 'ai/react';
 import { motion } from 'framer-motion';
-import Cookies from 'js-cookie';
+// import Cookies from 'js-cookie';
 import { useEffect, useState } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Button } from './ui/button';
@@ -69,35 +69,35 @@ export function Chat() {
 	// 	}
 	// };
 
-	const handleLastFiveExpensesClickWithCookies = async () => {
-		try {
-			const lastFiveExpenses = await getLastFiveExpensesWithCookie();
-			if (lastFiveExpenses.length >= 5) {
-				let message = `Por favor, analiza mis últimas cinco transacciones y un consejo de economía doméstica teniendolas en cuenta:\n\n`;
-				lastFiveExpenses.forEach((expense, index) => {
-					message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
-						expense.category
-					}, Nombre de la transacción: ${expense.expenseName}\n`;
-				});
-				append({ role: 'user', content: message });
-			} else {
-				// Handle the case where there are less than 5 expenses
-				append({
-					role: 'user',
-					content:
-						'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
-				});
-			}
-		} catch (error) {
-			console.error('Error fetching last five expenses:', error);
-		}
-	};
+	// const handleLastFiveExpensesClickWithCookies = async () => {
+	// 	try {
+	// 		const lastFiveExpenses = await getLastFiveExpensesWithCookie();
+	// 		if (lastFiveExpenses.length >= 5) {
+	// 			let message = `Por favor, analiza mis últimas cinco transacciones y un consejo de economía doméstica teniendolas en cuenta:\n\n`;
+	// 			lastFiveExpenses.forEach((expense, index) => {
+	// 				message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
+	// 					expense.category
+	// 				}, Nombre de la transacción: ${expense.expenseName}\n`;
+	// 			});
+	// 			append({ role: 'user', content: message });
+	// 		} else {
+	// 			// Handle the case where there are less than 5 expenses
+	// 			append({
+	// 				role: 'user',
+	// 				content:
+	// 					'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
+	// 			});
+	// 		}
+	// 	} catch (error) {
+	// 		console.error('Error fetching last five expenses:', error);
+	// 	}
+	// };
 
 	const handleLastFiveExpensesClickWithLocalStorage = async () => {
 		try {
+			const userContext = localStorage.getItem('userContext');
 			const lastFiveExpenses = await getLastFiveExpensesWithLocalStorage();
 			// Retrieve the userContext from localStorage
-			const userContext = localStorage.getItem('userContext');
 
 			if (userContext) {
 				// Parse the userContext JSON string into an object
@@ -136,46 +136,46 @@ export function Chat() {
 		}
 	};
 
-	const handleLastFiveExpensesClick = async () => {
-		try {
-			const userContextResponse = await fetch('/api/user-context', {
-				method: 'GET',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-			});
+	// const handleLastFiveExpensesClick = async () => {
+	// 	try {
+	// 		const userContextResponse = await fetch('/api/user-context', {
+	// 			method: 'GET',
+	// 			headers: {
+	// 				'Content-Type': 'application/json',
+	// 			},
+	// 		});
 
-			if (userContextResponse.ok) {
-				const userContext = await userContextResponse.json();
+	// 		if (userContextResponse.ok) {
+	// 			const userContext = await userContextResponse.json();
 
-				const lastFiveExpenses = await getLastFiveExpenses(userContext); // Pass userContext as a parameter
+	// 			const lastFiveExpenses = await getLastFiveExpenses(userContext); // Pass userContext as a parameter
 
-				if (lastFiveExpenses.length >= 5) {
-					let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo de economía doméstica teniéndolas en cuenta:\n\n`;
-					lastFiveExpenses.forEach((expense, index) => {
-						message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
-							expense.category
-						}, Nombre de la transacción: ${expense.expenseName}\n`;
-					});
-					append({ role: 'user', content: message });
-				} else {
-					// Handle the case where there are fewer than 5 expenses
-					append({
-						role: 'user',
-						content:
-							'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
-					});
-				}
-			} else {
-				console.error('Failed to fetch user context');
-			}
-		} catch (error) {
-			console.error(
-				'Error fetching user context or last five expenses:',
-				error
-			);
-		}
-	};
+	// 			if (lastFiveExpenses.length >= 5) {
+	// 				let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo de economía doméstica teniéndolas en cuenta:\n\n`;
+	// 				lastFiveExpenses.forEach((expense, index) => {
+	// 					message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
+	// 						expense.category
+	// 					}, Nombre de la transacción: ${expense.expenseName}\n`;
+	// 				});
+	// 				append({ role: 'user', content: message });
+	// 			} else {
+	// 				// Handle the case where there are fewer than 5 expenses
+	// 				append({
+	// 					role: 'user',
+	// 					content:
+	// 						'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
+	// 				});
+	// 			}
+	// 		} else {
+	// 			console.error('Failed to fetch user context');
+	// 		}
+	// 	} catch (error) {
+	// 		console.error(
+	// 			'Error fetching user context or last five expenses:',
+	// 			error
+	// 		);
+	// 	}
+	// };
 
 	const saveChatToHistory = async (
 		messages: Message[],
@@ -228,20 +228,18 @@ export function Chat() {
 				content: INITIAL_MESSAGE,
 			});
 		}
-
-		localStorage.setItem('userContext', JSON.stringify(userInfo));
 	}, [messages]);
 
-	useEffect(() => {
-		const userCookie = Cookies.get('userContext');
+	// useEffect(() => {
+	// 	const userCookie = Cookies.get('userContext');
 
-		if (userCookie) {
-			const decodedUserCookie = decodeURIComponent(userCookie);
-			const parsedUserInfo: CookieValue = JSON.parse(decodedUserCookie);
+	// 	if (userCookie) {
+	// 		const decodedUserCookie = decodeURIComponent(userCookie);
+	// 		const parsedUserInfo: CookieValue = JSON.parse(decodedUserCookie);
 
-			setUserInfo(parsedUserInfo);
-		}
-	}, []);
+	// 		setUserInfo(parsedUserInfo);
+	// 	}
+	// }, []);
 
 	// useEffect(() => {
 	// 	// Add an event listener to listen for messages from the other application
@@ -278,7 +276,10 @@ export function Chat() {
 	// 	fetchUserContext();
 	// }, [getUserContext, setUserInfo]);
 
-	// Inside your Chat component
+	useEffect(() => {
+		localStorage.setItem('userContext', JSON.stringify(userInfo));
+	}, [userInfo]);
+
 	useEffect(() => {
 		const fetchUserContext = async () => {
 			try {
@@ -292,10 +293,9 @@ export function Chat() {
 				if (response.ok) {
 					const userContext = await response.json();
 					// Save the user context in a cookie named "userContext"
-					Cookies.set('userContext', JSON.stringify(userContext));
-
+					// Cookies.set('userContext', JSON.stringify(userContext));
 					setUserInfo(userContext);
-					saveChatToHistory(messages, userContext);
+					// saveChatToHistory(messages, userContext);
 					setLoading(false);
 				} else {
 					console.error('Failed to fetch user context');

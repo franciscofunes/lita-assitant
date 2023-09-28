@@ -8,7 +8,6 @@ import {
 	query,
 } from 'firebase/firestore';
 import Cookies from 'js-cookie';
-import { cookies } from 'next/headers';
 import { database } from '../../../firebaseConfig';
 
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -127,6 +126,37 @@ export async function getLastFiveExpenses(
 
 	return lastFiveTransactions;
 }
+
+// export async function getLastFiveExpensesWithLocalStorage(): Promise<
+// 	Expense[]
+// > {
+// 	// Parse the userContext cookie to extract the UID
+// 	const userContext = localStorage.getItem('userContext');
+// 	if (!userContext) {
+// 		throw new Error('User context cookie not found.');
+// 	}
+
+// 	const userContextObject = JSON.parse(userContext);
+// 	const uid = userContextObject.uid;
+
+// 	// Query the user's transactions collection
+// 	const transactionsCollection = collection(database, 'users', uid, 'expenses');
+
+// 	// Create a query to get the last five transactions based on the date
+// 	const transactionQuery = query(
+// 		transactionsCollection,
+// 		orderBy('date', 'desc'), // Sort by date in descending order
+// 		limit(5) // Limit to the last five transactions
+// 	);
+
+// 	const querySnapshot = await getDocs(transactionQuery);
+
+// 	const lastFiveTransactions: Expense[] = querySnapshot.docs.map(
+// 		(doc: DocumentSnapshot) => doc.data() as Expense
+// 	);
+
+// 	return lastFiveTransactions;
+// }
 
 export const chatHistoryCollection = collection(database, 'chat_history');
 

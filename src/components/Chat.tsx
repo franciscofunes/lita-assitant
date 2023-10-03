@@ -145,7 +145,7 @@ export function Chat() {
 				}
 
 				const options = await response.json();
-				setHardcodedOptions(options);
+				setHardcodedOptions(defaultAdvicesPrompts);
 				setLoading(false);
 			} catch (error) {
 				console.error('Error fetching advices prompts:', error);

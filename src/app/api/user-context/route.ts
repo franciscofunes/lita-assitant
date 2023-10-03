@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 		const userContext = getUserContext(); // Implement this function
 
 		if (!userContext) {
-			throw new Error('User context not found');
+			throw new Error('User context not found in GET context');
 		}
 
 		const statusCode = 200;

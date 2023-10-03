@@ -15,6 +15,7 @@ import { Card, CardContent, CardFooter } from './ui/card';
 import CircleLoader from './ui/circle-loader';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
+import { getUserTransactions } from '@/shared/utils/userTransactions';
 
 const ASSITANT_PROMPT = '¿Quieres que continúe?';
 const NO_ANSWER = 'Adios LITA, ya podemos finalizar la conversación';
@@ -29,11 +30,43 @@ export function Chat() {
 
 	const [loading, setLoading] = useState(true);
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-	const [userLastFiveTransactions, setUserLastFiveTransactions] = useState<
-		any | null
+	const [userLastFiveTransactionsState, setUserLastFiveTransactions] = useState<
+		ExpenseItem[] | null
 	>(null);
 
-	const [advicesPrompts, setHardcodedOptions] = useState<AdvicePrompt[]>([]);
+	const options: string[] = [
+		'Consejo sobre compras en supermercados',
+		'Consejos sobre ahorro doméstico',
+		'Consejos sobre compra de dólares',
+	];
+
+	const defaultAdvicesPrompts = [
+		{
+			id: 'TGWVmz4WToqFeKLq6Hji',
+			description: 'Consejo sobre compras en supermercados',
+			category: 'compras',
+			prompt:
+				'LITA dame un consejo de economía doméstica breve de corta extensión sobre cómo ahorrar dinero al comprar en un supermercado alimentos',
+		},
+		{
+			id: 'jYylW4N7c1KFC2z4BoTM',
+			prompt:
+				'LITA dame un consejo breve de corta extensión sobre el ahorro doméstico',
+			description: 'Consejos sobre ahorro doméstico',
+			category: 'domesticos',
+		},
+		{
+			id: 'oHPXsBuGbNFhv3pLrYNV',
+			prompt:
+				'Lita dame un consejo bien breve de cómo comprar dólares en Argentina',
+			category: 'divisas',
+			description: 'Consejos sobre compra de dólares',
+		},
+	];
+
+	const [advicesPrompts, setHardcodedOptions] = useState<AdvicePrompt[]>(
+		defaultAdvicesPrompts
+	);
 	const [chatHistory, setChatHistory] = useState<Message[]>([]);
 
 	const handleButtonClick = (option: string) => {
@@ -43,53 +76,10 @@ export function Chat() {
 	const handleAnswerClick = (answer: string) => {
 		if (answer === NO_ANSWER) {
 			// Send a message to the parent window to close the LITA assistant panel
+			localStorage.removeItem('userLastFiveTransactions');
 			window.parent.postMessage('closeLitaPanel', '*'); // '*' allows communication with any origin
 		} else {
 			append({ role: 'user', content: answer });
-		}
-	};
-
-	const handleLastFiveExpensesClickWithEvent = () => {
-		try {
-			window.parent.postMessage('getLastFiveUserTransactions', '*');
-			// Retrieve the userLastFiveTransactions from localStorage
-			const userLastFiveTransactions = localStorage.getItem(
-				'userLastFiveTransactions'
-			);
-
-			if (userLastFiveTransactions) {
-				// Parse the userLastFiveTransactions JSON string into an array
-				const lastFiveExpenses = JSON.parse(userLastFiveTransactions);
-
-				if (lastFiveExpenses.length >= 5) {
-					let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo de economía doméstica teniéndolas en cuenta:\n\n`;
-					lastFiveExpenses.forEach((expense: any, index: any) => {
-						message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
-							expense.category
-						}, Nombre de la transacción: ${expense.expenseName}\n`;
-					});
-					append({ role: 'user', content: message });
-				} else {
-					// Handle the case where there are fewer than 5 expenses
-					append({
-						role: 'user',
-						content:
-							'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
-					});
-				}
-			} else {
-				// Handle the case where userLastFiveTransactions is not found in localStorage
-				append({
-					role: 'user',
-					content:
-						'No se encontró el contexto de las últimas cinco transacciones en localStorage.',
-				});
-			}
-		} catch (error) {
-			console.error(
-				'Error fetching userLastFiveTransactions from localStorage:',
-				error
-			);
 		}
 	};
 
@@ -216,9 +206,10 @@ export function Chat() {
 
 				if (response.ok) {
 					const userContext = await response.json();
-					// Save the user context in a cookie named "userContext"
-					// Cookies.set('userContext', JSON.stringify(userContext));
+
+					localStorage.setItem('userContext', JSON.stringify(userInfo));
 					setUserInfo(userContext);
+
 					// saveChatToHistory(messages, userContext);
 					setLoading(false);
 				} else {
@@ -231,6 +222,46 @@ export function Chat() {
 
 		fetchUserContext();
 	}, []);
+
+	const handleLastFiveExpensesClickWithEvent = async () => {
+		try {
+			await window.parent.postMessage('getLastFiveUserTransactions', '*');
+
+			if (userLastFiveTransactionsState) {
+				// Parse the userLastFiveTransactions JSON string into an array
+
+				if (userLastFiveTransactionsState.length >= 5) {
+					let message = `Por favor, analiza mis últimas cinco transacciones y dame un consejo de economía doméstica teniéndolas en cuenta:\n\n`;
+
+					userLastFiveTransactionsState.forEach(
+						(expense: ExpenseItem, index: number) => {
+							message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
+								expense.category
+							}, Nombre de la transacción: ${expense.expenseName}\n`;
+						}
+					);
+
+					append({ role: 'user', content: message });
+				} else {
+					// Handle the case where there are fewer than 5 expenses
+					append({
+						role: 'user',
+						content:
+							'No hay suficientes gastos para analizar. Por favor, agregue más gastos.',
+					});
+				}
+			} else {
+				// Handle the case where userLastFiveTransactions is not found in localStorage
+				append({
+					role: 'user',
+					content:
+						'No se encontró la información de las últimas cinco transacciones.',
+				});
+			}
+		} catch (error) {
+			console.error('Error Solicitando las transacciones del usuario', error);
+		}
+	};
 
 	useEffect(() => {
 		const fetchUserLastFiveTransactions = async () => {
@@ -246,15 +277,11 @@ export function Chat() {
 					const lastFiveTransactions = await response.json();
 
 					setUserLastFiveTransactions(lastFiveTransactions);
-					localStorage.setItem(
-						'userLastFiveTransactions',
-						JSON.stringify(lastFiveTransactions)
-					);
 				} else {
-					console.error('Failed to fetch user context');
+					console.error('Failed to fetch user transactions');
 				}
 			} catch (error) {
-				console.error('Error fetching user context:', error);
+				console.error('Error fetching user transactions:', error);
 			}
 		};
 

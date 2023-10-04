@@ -196,28 +196,23 @@ export function Chat() {
 	useEffect(() => {
 		const fetchUserContext = async () => {
 			try {
-				if (!userInfo) {
-					const response = await fetch('/api/user-context', {
-						method: 'GET',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-					});
+				const response = await fetch('/api/user-context', {
+					method: 'GET',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+				});
 
-					if (response.ok) {
-						const userContext = await response.json();
+				if (response.ok) {
+					const userContext = await response.json();
 
-						localStorage.setItem('userContext', JSON.stringify(userInfo));
-						setUserInfo(userContext);
+					localStorage.setItem('userContext', JSON.stringify(userInfo));
+					setUserInfo(userContext);
 
-						// saveChatToHistory(messages, userContext);
-						setLoading(false);
-					} else {
-						console.error('Failed to fetch user context');
-					}
+					// saveChatToHistory(messages, userContext);
+					setLoading(false);
 				} else {
-					const userContextLocalStorage = localStorage.getItem('userContext');
-					setUserInfo(userContextLocalStorage as unknown as UserInfo);
+					console.error('Failed to fetch user context');
 				}
 			} catch (error) {
 				console.error('Error fetching user context:', error);

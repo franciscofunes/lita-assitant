@@ -18,7 +18,7 @@ import { ScrollArea } from './ui/scroll-area';
 
 const ASSITANT_PROMPT = '¿Quieres que continúe?';
 const NO_ANSWER = 'Adios LITA, ya podemos finalizar la conversación';
-const YES_ANSWER = `LITA dame con más consejos sobre economía doméstica`;
+const YES_ANSWER = `LITA dame más consejos sobre economía doméstica`;
 const INITIAL_MESSAGE =
 	'¡Hola LITA! Me gustaría recibir un consejo corto sobre economía doméstica. ¿Por dónde crees que debería empezar?';
 

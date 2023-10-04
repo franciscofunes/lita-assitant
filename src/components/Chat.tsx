@@ -15,7 +15,6 @@ import { Card, CardContent, CardFooter } from './ui/card';
 import CircleLoader from './ui/circle-loader';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
-import { getUserTransactions } from '@/shared/utils/userTransactions';
 
 const ASSITANT_PROMPT = '¿Quieres que continúe?';
 const NO_ANSWER = 'Adios LITA, ya podemos finalizar la conversación';
@@ -58,9 +57,9 @@ export function Chat() {
 		{
 			id: 'oHPXsBuGbNFhv3pLrYNV',
 			prompt:
-				'Lita dame un consejo bien breve de cómo comprar dólares en Argentina',
-			category: 'divisas',
-			description: 'Consejos sobre compra de dólares',
+				'Lita dame un consejo bien breve de cómo armar un presupuesto para mejorar mi economía doméstica',
+			category: 'Consejos sobre presupuestos',
+			description: 'Consejos sobre armado de presupuestos',
 		},
 	];
 
@@ -75,8 +74,8 @@ export function Chat() {
 
 	const handleAnswerClick = (answer: string) => {
 		if (answer === NO_ANSWER) {
-			// Send a message to the parent window to close the LITA assistant panel
-			localStorage.removeItem('userLastFiveTransactions');
+			localStorage.removeItem('userContext');
+
 			window.parent.postMessage('closeLitaPanel', '*'); // '*' allows communication with any origin
 		} else {
 			append({ role: 'user', content: answer });
@@ -197,23 +196,28 @@ export function Chat() {
 	useEffect(() => {
 		const fetchUserContext = async () => {
 			try {
-				const response = await fetch('/api/user-context', {
-					method: 'GET',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-				});
+				if (!userInfo) {
+					const response = await fetch('/api/user-context', {
+						method: 'GET',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+					});
 
-				if (response.ok) {
-					const userContext = await response.json();
+					if (response.ok) {
+						const userContext = await response.json();
 
-					localStorage.setItem('userContext', JSON.stringify(userInfo));
-					setUserInfo(userContext);
+						localStorage.setItem('userContext', JSON.stringify(userInfo));
+						setUserInfo(userContext);
 
-					// saveChatToHistory(messages, userContext);
-					setLoading(false);
+						// saveChatToHistory(messages, userContext);
+						setLoading(false);
+					} else {
+						console.error('Failed to fetch user context');
+					}
 				} else {
-					console.error('Failed to fetch user context');
+					const userContextLocalStorage = localStorage.getItem('userContext');
+					setUserInfo(userContextLocalStorage as unknown as UserInfo);
 				}
 			} catch (error) {
 				console.error('Error fetching user context:', error);
@@ -235,9 +239,11 @@ export function Chat() {
 
 					userLastFiveTransactionsState.forEach(
 						(expense: ExpenseItem, index: number) => {
-							message += `${index + 1}. Monto: ${expense.amount}, Categoría: ${
-								expense.category
-							}, Nombre de la transacción: ${expense.expenseName}\n`;
+							message += `${index + 1}. Monto: $${
+								expense.amount ?? 100
+							}, Categoría: ${expense.category}, Nombre de la transacción: ${
+								expense.expenseName
+							}\n`;
 						}
 					);
 
@@ -251,7 +257,6 @@ export function Chat() {
 					});
 				}
 			} else {
-				// Handle the case where userLastFiveTransactions is not found in localStorage
 				append({
 					role: 'user',
 					content:

@@ -72,7 +72,37 @@
   * {
     @apply border-border;
   }
+  html,
   body {
-    @apply bg-background text-foreground;
+    @apply min-h-full bg-slate-950 text-slate-100;
+  }
+
+  body {
+    margin: 0;
+    overflow: hidden;
+  }
+
+  ::selection {
+    @apply bg-violet-500/40 text-white;
+  }
+}
+
+@layer utilities {
+  .lita-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(71 85 105) transparent;
+  }
+
+  .lita-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .lita-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .lita-scrollbar::-webkit-scrollbar-thumb {
+    background: rgb(71 85 105);
+    border-radius: 9999px;
   }
 }

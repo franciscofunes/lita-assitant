@@ -4,13 +4,13 @@ import { useChat } from 'ai/react'
 import {
   Bot,
   CheckCircle2,
-  CircleDollarSign,
+  DollarSign,
   PieChart,
   Send,
   ShieldCheck,
   Sparkles,
-  UserRound,
-  WalletCards,
+  User,
+  Wallet,
   WifiOff,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -145,9 +145,9 @@ export function Chat() {
     financialContext?.section === 'portfolio' ? (
       <PieChart className="h-3.5 w-3.5" />
     ) : financialContext?.section === 'transactions' ? (
-      <WalletCards className="h-3.5 w-3.5" />
+      <Wallet className="h-3.5 w-3.5" />
     ) : (
-      <CircleDollarSign className="h-3.5 w-3.5" />
+      <DollarSign className="h-3.5 w-3.5" />
     )
 
   const quickPrompts =
@@ -301,7 +301,7 @@ export function Chat() {
 
                   {isUser && (
                     <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300">
-                      <UserRound className="h-4 w-4" />
+                      <User className="h-4 w-4" />
                     </div>
                   )}
                 </div>

@@ -50,6 +50,32 @@ For real personal financial data, review each provider's retention/training poli
 
 Copy `.env.example` and configure only the providers you want. Providers without both an API key/token and model are ignored.
 
+### Vercel configuration checklist
+
+The legacy `OPENAI_API_KEY` variable by itself is **not** consumed by the new provider router. At least one complete provider configuration is required.
+
+For AI Gateway on Vercel, the minimum is:
+
+```bash
+AI_GATEWAY_MODEL=<model-id>
+```
+
+The deployment can use Vercel's `VERCEL_OIDC_TOKEN` automatically, so `AI_GATEWAY_API_KEY` is optional on Vercel.
+
+Recommended routing controls:
+
+```bash
+AI_PROVIDER_STRATEGY=round-robin
+AI_PROVIDER_ORDER=gateway,groq,openrouter,nvidia,google
+AI_PROVIDER_TIMEOUT_MS=12000
+LITA_MAX_OUTPUT_TOKENS=700
+LITA_MAX_HISTORY_MESSAGES=20
+LITA_MAX_CONTEXT_CHARS=24000
+NEXT_PUBLIC_LITA_PARENT_ORIGINS=https://lleva-tus-cuentas.netlify.app,http://localhost:3000
+```
+
+`GET /api/status` reports whether at least one provider is configured and returns provider IDs/labels only; it never returns credentials.
+
 Recommended production starting point:
 
 1. Vercel AI Gateway as the primary path.

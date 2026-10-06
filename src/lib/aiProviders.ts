@@ -117,6 +117,9 @@ const orderedProviders = () => {
   return [...ordered, ...providers.filter((provider) => !included.has(provider.id))]
 }
 
+export const getConfiguredProviderSummary = () =>
+  orderedProviders().map(({ id, label }) => ({ id, label }))
+
 export const getProviderAttemptOrder = () => {
   const providers = orderedProviders()
   if (providers.length < 2 || process.env.AI_PROVIDER_STRATEGY === 'ordered') {

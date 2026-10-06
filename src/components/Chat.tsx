@@ -217,14 +217,14 @@ export function Chat() {
         </div>
       </header>
 
-      <section className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+      <section className="lita-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
         <div className="mx-auto flex w-full max-w-2xl flex-col">
           {messages.length === 0 && (
             <div className="mb-6">
               <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
-                    <Sparkles className="h-4.5 w-4.5" />
+                    <Sparkles className="h-4 w-4" />
                   </div>
                   <div>
                     <h2 className="text-lg font-extrabold text-white">

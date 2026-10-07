@@ -3,6 +3,7 @@ import {
   AiProvider,
   getProviderAttemptOrder,
   getProviderTimeoutMs,
+  resolveProviderAuthToken,
 } from '@/lib/aiProviders'
 
 export const runtime = 'nodejs'
@@ -106,10 +107,15 @@ async function completion(provider: AiProvider, messages: ChatMessage[]) {
   const timeout = setTimeout(() => controller.abort(), getProviderTimeoutMs())
 
   try {
+    const authToken = await resolveProviderAuthToken(provider)
+    if (!authToken) {
+      throw new Error('Provider authentication unavailable')
+    }
+
     return await fetch(`${provider.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${provider.apiKey}`,
+        Authorization: `Bearer ${authToken}`,
         'Content-Type': 'application/json',
         ...provider.headers,
       },

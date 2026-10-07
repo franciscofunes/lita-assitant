@@ -4,7 +4,7 @@ import { getConfiguredProviderSummary } from '@/lib/aiProviders'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const providers = getConfiguredProviderSummary()
+  const providers = await getConfiguredProviderSummary()
 
   return NextResponse.json(
     {

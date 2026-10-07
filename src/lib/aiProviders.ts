@@ -1,11 +1,14 @@
+import { getVercelOidcToken } from '@vercel/oidc'
+
 export type AiProvider = {
   id: string
   label: string
   baseUrl: string
-  apiKey: string
+  apiKey?: string
   model: string
   headers?: Record<string, string>
   fallbackModels?: string[]
+  runtimeAuth?: 'vercel-oidc'
 }
 
 let providerCursor = Math.floor(Math.random() * 1000)
@@ -24,9 +27,9 @@ const configured = (
   baseUrl: string,
   apiKey?: string,
   model?: string,
-  options: Pick<AiProvider, 'headers' | 'fallbackModels'> = {},
+  options: Pick<AiProvider, 'headers' | 'fallbackModels' | 'runtimeAuth'> = {},
 ): AiProvider | null => {
-  if (!apiKey || !model) return null
+  if (!model || (!apiKey && !options.runtimeAuth)) return null
 
   return {
     id,
@@ -52,9 +55,12 @@ const namedProviders = (): AiProvider[] => {
       'gateway',
       'Vercel AI Gateway',
       process.env.AI_GATEWAY_BASE_URL || 'https://ai-gateway.vercel.sh/v1',
-      process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN,
+      process.env.AI_GATEWAY_API_KEY,
       process.env.AI_GATEWAY_MODEL,
-      { fallbackModels: csv(process.env.AI_GATEWAY_FALLBACK_MODELS) },
+      {
+        fallbackModels: csv(process.env.AI_GATEWAY_FALLBACK_MODELS),
+        runtimeAuth: 'vercel-oidc',
+      },
     ),
     configured(
       'groq',
@@ -117,8 +123,30 @@ const orderedProviders = () => {
   return [...ordered, ...providers.filter((provider) => !included.has(provider.id))]
 }
 
-export const getConfiguredProviderSummary = () =>
-  orderedProviders().map(({ id, label }) => ({ id, label }))
+export const resolveProviderAuthToken = async (provider: AiProvider) => {
+  if (provider.apiKey) return provider.apiKey
+  if (provider.runtimeAuth !== 'vercel-oidc') return ''
+
+  try {
+    return await getVercelOidcToken()
+  } catch {
+    return ''
+  }
+}
+
+export const getConfiguredProviderSummary = async () => {
+  const providers = orderedProviders()
+  const available = await Promise.all(
+    providers.map(async (provider) => ({
+      provider,
+      authReady: Boolean(await resolveProviderAuthToken(provider)),
+    })),
+  )
+
+  return available
+    .filter(({ authReady }) => authReady)
+    .map(({ provider: { id, label } }) => ({ id, label }))
+}
 
 export const getProviderAttemptOrder = () => {
   const providers = orderedProviders()

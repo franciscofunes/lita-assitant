@@ -39,6 +39,17 @@ type StoredChatMessage = {
   content: string
 }
 
+type HistoryStatus = {
+  state: 'loading' | 'ready' | 'error' | 'unavailable'
+  reason?: string
+}
+
+type PendingSave = {
+  requestId: string
+  id: string
+  signature: string
+}
+
 type ChatThread = {
   id: string
   title: string
@@ -52,6 +63,10 @@ const defaultParentOrigins = [
   'https://lleva-tus-cuentas.netlify.app',
   'http://localhost:3000',
 ]
+
+// Netlify deploy previews belong to this exact LTC site; other Netlify sites
+// and arbitrary origins are not trusted.
+const trustedLtcPreviewOrigin = /^https:\/\/deploy-preview-\d+--lleva-tus-cuentas\.netlify\.app$/
 
 const configuredParentOrigins = () =>
   (process.env.NEXT_PUBLIC_LITA_PARENT_ORIGINS || '')
@@ -176,6 +191,12 @@ export function Chat() {
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatus | null>(null)
   const [historyThreads, setHistoryThreads] = useState<ChatThread[]>([])
+  const [historyStatus, setHistoryStatus] = useState<HistoryStatus>({ state: 'loading' })
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveError, setSaveError] = useState('')
+  const [saveAttempt, setSaveAttempt] = useState(0)
+  const pendingSaveRef = useRef<PendingSave | null>(null)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activeChatId, setActiveChatId] = useState('')
   const [activeCreatedAt, setActiveCreatedAt] = useState('')
@@ -211,7 +232,7 @@ export function Chat() {
 
   useEffect(() => {
     const handleParentMessage = (event: MessageEvent) => {
-      if (!allowedParentOrigins.has(event.origin) || event.source !== window.parent) return
+      if (event.source !== window.parent || !(allowedParentOrigins.has(event.origin) || trustedLtcPreviewOrigin.test(event.origin))) return
       parentOriginRef.current = event.origin
 
       if (event.data?.type === 'lita:theme') {
@@ -232,6 +253,36 @@ export function Chat() {
 
       if (event.data?.type === 'lita:history') {
         setHistoryThreads(normalizeHistory(event.data.payload))
+        return
+      }
+
+      if (event.data?.type === 'lita:history:status') {
+        const status = event.data.payload as HistoryStatus | undefined
+        if (status && ['loading', 'ready', 'error', 'unavailable'].includes(status.state)) {
+          setHistoryStatus({ state: status.state, reason: status.reason })
+        }
+        return
+      }
+
+      if (event.data?.type === 'lita:history:save:result') {
+        const result = event.data.payload
+        const pending = pendingSaveRef.current
+        if (!pending || result?.requestId !== pending.requestId || result?.id !== pending.id) return
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+        saveTimeoutRef.current = null
+        pendingSaveRef.current = null
+        if (result.success === true) {
+          lastSavedSignatureRef.current = pending.signature
+          setSaveStatus('saved')
+          setSaveError('')
+        } else {
+          setSaveStatus('error')
+          setSaveError(result.reason === 'permission-denied'
+            ? 'Firestore no permite guardar el historial. Revisá las reglas de seguridad.'
+            : result.reason === 'unauthenticated'
+              ? 'Iniciá sesión en LTC para guardar esta conversación.'
+              : 'No se pudo guardar el chat en tu cuenta. Podés reintentar.')
+        }
       }
     }
 
@@ -321,12 +372,18 @@ export function Chat() {
 
     const parentOrigin = parentOriginRef.current
     if (!parentOrigin) return
+    if (pendingSaveRef.current?.signature === signature) return
 
     const timer = setTimeout(() => {
+      const requestId = createChatId()
+      pendingSaveRef.current = { requestId, id: activeChatId, signature }
+      setSaveStatus('saving')
+      setSaveError('')
       window.parent.postMessage(
         {
           type: 'lita:history:save',
           payload: {
+            requestId,
             id: activeChatId,
             title: threadTitle(storedMessages),
             section: financialContext?.section || 'financial',
@@ -336,7 +393,13 @@ export function Chat() {
         },
         parentOrigin,
       )
-      lastSavedSignatureRef.current = signature
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+      saveTimeoutRef.current = setTimeout(() => {
+        if (pendingSaveRef.current?.requestId !== requestId) return
+        pendingSaveRef.current = null
+        setSaveStatus('error')
+        setSaveError('El guardado no fue confirmado. Podés reintentar.')
+      }, 10000)
     }, 650)
 
     return () => clearTimeout(timer)
@@ -346,9 +409,33 @@ export function Chat() {
     financialContext?.section,
     isLoading,
     messages,
+    saveAttempt,
   ])
 
+  useEffect(() => () => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+  }, [])
+
+  const retrySave = () => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    pendingSaveRef.current = null
+    setSaveStatus('idle')
+    setSaveError('')
+    setSaveAttempt((attempt) => attempt + 1)
+  }
+
+  const refreshHistory = () => {
+    const parentOrigin = parentOriginRef.current
+    if (!parentOrigin) return
+    setHistoryStatus({ state: 'loading' })
+    window.parent.postMessage({ type: 'lita:history:refresh' }, parentOrigin)
+  }
+
   const startNewChat = () => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    pendingSaveRef.current = null
+    setSaveStatus('idle')
+    setSaveError('')
     setMessages([])
     setInput('')
     setActiveChatId(createChatId())
@@ -358,6 +445,10 @@ export function Chat() {
   }
 
   const loadThread = (thread: ChatThread) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    pendingSaveRef.current = null
+    setSaveStatus('saved')
+    setSaveError('')
     const restoredMessages = normalizeStoredMessages(thread.messages)
     setMessages(restoredMessages)
     setInput('')
@@ -642,6 +733,23 @@ export function Chat() {
       </section>
 
       <footer className="shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 p-3.5 backdrop-blur sm:p-4">
+        {saveStatus !== 'idle' && (
+          <div role={saveStatus === 'error' ? 'alert' : 'status'} className="mx-auto mb-2 flex w-full max-w-2xl items-center justify-between gap-2 text-xs">
+            <span className={saveStatus === 'error'
+              ? 'text-red-700 dark:text-red-300'
+              : 'text-slate-600 dark:text-slate-400'}>
+              {saveStatus === 'saving' ? 'Guardando conversación…'
+                : saveStatus === 'saved' ? 'Conversación guardada'
+                  : saveError}
+            </span>
+            {saveStatus === 'error' && (
+              <button type="button" onClick={retrySave}
+                className="shrink-0 rounded-lg border border-red-500/40 px-2 py-1 font-semibold text-red-700 dark:text-red-200">
+                Reintentar guardado
+              </button>
+            )}
+          </div>
+        )}
         <form
           className="mx-auto flex w-full max-w-2xl items-end gap-2"
           onSubmit={handleSubmit}
@@ -725,7 +833,28 @@ export function Chat() {
           </div>
 
           <div className="lita-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
-            {historyThreads.length === 0 ? (
+            {historyStatus.state === 'loading' ? (
+              <p role="status" className="p-6 text-center text-sm text-slate-600 dark:text-slate-300">
+                Cargando conversaciones…
+              </p>
+            ) : historyStatus.state === 'error' || historyStatus.state === 'unavailable' ? (
+              <div role="alert" className="rounded-2xl border border-amber-500/40 p-5 text-center">
+                <p className="font-bold text-slate-900 dark:text-white">
+                  No se pudo cargar el historial
+                </p>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                  {historyStatus.reason === 'permission-denied'
+                    ? 'Firestore rechazó la lectura. Revisá las reglas del historial de LITA.'
+                    : historyStatus.reason === 'unauthenticated'
+                      ? 'Iniciá sesión en Lleva Tus Cuentas para ver tus conversaciones.'
+                      : 'No pudimos consultar tus conversaciones. Intentá nuevamente.'}
+                </p>
+                <button type="button" onClick={refreshHistory}
+                  className="mt-4 rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white">
+                  Reintentar
+                </button>
+              </div>
+            ) : historyThreads.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-900/50 px-4 py-8 text-center">
                 <History className="mx-auto h-5 w-5 text-slate-500 dark:text-slate-500" />
                 <p className="mt-2 text-sm font-bold text-slate-700 dark:text-slate-300">

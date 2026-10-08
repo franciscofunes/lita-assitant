@@ -134,17 +134,37 @@ export const resolveProviderAuthToken = async (provider: AiProvider) => {
   }
 }
 
+const isProviderReady = async (provider: AiProvider) => {
+  const authToken = await resolveProviderAuthToken(provider)
+  if (!authToken) return false
+
+  if (provider.id !== 'gateway') return true
+
+  try {
+    const response = await fetch(`${provider.baseUrl}/credits`, {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      cache: 'no-store',
+    })
+
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
 export const getConfiguredProviderSummary = async () => {
   const providers = orderedProviders()
   const available = await Promise.all(
     providers.map(async (provider) => ({
       provider,
-      authReady: Boolean(await resolveProviderAuthToken(provider)),
+      ready: await isProviderReady(provider),
     })),
   )
 
   return available
-    .filter(({ authReady }) => authReady)
+    .filter(({ ready }) => ready)
     .map(({ provider: { id, label } }) => ({ id, label }))
 }
 

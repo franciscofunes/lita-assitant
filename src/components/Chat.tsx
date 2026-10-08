@@ -5,15 +5,20 @@ import {
   Bot,
   CheckCircle2,
   DollarSign,
+  History,
   PieChart,
+  Plus,
   Send,
   ShieldCheck,
   Sparkles,
+  Trash2,
   User,
   Wallet,
   WifiOff,
+  X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Streamdown } from 'streamdown'
 
 type FinancialContext = {
   section?: string
@@ -26,6 +31,21 @@ type ProviderStatus = {
     id: string
     label: string
   }>
+}
+
+type StoredChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type ChatThread = {
+  id: string
+  title: string
+  section: string
+  messages: StoredChatMessage[]
+  createdAt: string | null
+  updatedAt: string | null
 }
 
 const defaultParentOrigins = [
@@ -57,21 +77,142 @@ const genericPrompts = [
   'Detectá datos que debería verificar',
 ]
 
+const createChatId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+
+  return `lita-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+const normalizeStoredMessages = (messages: unknown): StoredChatMessage[] => {
+  if (!Array.isArray(messages)) return []
+
+  return messages
+    .filter(
+      (message): message is StoredChatMessage =>
+        Boolean(
+          message &&
+            typeof message === 'object' &&
+            'role' in message &&
+            'content' in message &&
+            ['user', 'assistant'].includes(
+              String((message as StoredChatMessage).role),
+            ) &&
+            typeof (message as StoredChatMessage).content === 'string',
+        ),
+    )
+    .slice(-40)
+    .map((message, index) => ({
+      id: String(message.id || `history-${index}`),
+      role: message.role,
+      content: message.content,
+    }))
+}
+
+const normalizeHistory = (value: unknown): ChatThread[] => {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .filter(
+      (thread) =>
+        Boolean(
+          thread &&
+            typeof thread === 'object' &&
+            'id' in thread &&
+            typeof (thread as ChatThread).id === 'string',
+        ),
+    )
+    .slice(0, 20)
+    .map((thread) => {
+      const row = thread as ChatThread
+      return {
+        id: row.id,
+        title:
+          typeof row.title === 'string' && row.title.trim()
+            ? row.title
+            : 'Conversación con LITA',
+        section:
+          typeof row.section === 'string' ? row.section : 'financial',
+        messages: normalizeStoredMessages(row.messages),
+        createdAt: typeof row.createdAt === 'string' ? row.createdAt : null,
+        updatedAt: typeof row.updatedAt === 'string' ? row.updatedAt : null,
+      }
+    })
+}
+
+const historySignature = (messages: StoredChatMessage[]) =>
+  JSON.stringify(
+    messages.map(({ role, content }) => ({
+      role,
+      content,
+    })),
+  )
+
+const threadTitle = (messages: StoredChatMessage[]) => {
+  const firstUserMessage = messages.find((message) => message.role === 'user')
+  if (!firstUserMessage) return 'Conversación con LITA'
+
+  const compact = firstUserMessage.content.replace(/\s+/g, ' ').trim()
+  return compact.length > 64 ? `${compact.slice(0, 61)}…` : compact
+}
+
+const formatHistoryDate = (value: string | null) => {
+  if (!value) return 'Sin fecha'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Sin fecha'
+
+  return date.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export function Chat() {
   const [financialContext, setFinancialContext] =
     useState<FinancialContext | null>(null)
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatus | null>(null)
+  const [historyThreads, setHistoryThreads] = useState<ChatThread[]>([])
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [activeChatId, setActiveChatId] = useState('')
+  const [activeCreatedAt, setActiveCreatedAt] = useState('')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const parentOriginRef = useRef<string | null>(null)
+  const lastSavedSignatureRef = useRef('')
 
   const allowedParentOrigins = useMemo(
     () => new Set([...defaultParentOrigins, ...configuredParentOrigins()]),
     [],
   )
 
+  const {
+    messages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    isLoading,
+    error,
+    setInput,
+    setMessages,
+  } = useChat({
+    api: '/api/chat',
+    body: {
+      context: financialContext,
+    },
+  })
+
+  useEffect(() => {
+    setActiveChatId(createChatId())
+    setActiveCreatedAt(new Date().toISOString())
+  }, [])
+
   useEffect(() => {
     const handleParentMessage = (event: MessageEvent) => {
       if (!allowedParentOrigins.has(event.origin)) return
+      parentOriginRef.current = event.origin
 
       if (
         event.data?.type === 'lita:context' &&
@@ -79,6 +220,11 @@ export function Chat() {
         typeof event.data.payload === 'object'
       ) {
         setFinancialContext(event.data.payload)
+        return
+      }
+
+      if (event.data?.type === 'lita:history') {
+        setHistoryThreads(normalizeHistory(event.data.payload))
       }
     }
 
@@ -97,7 +243,9 @@ export function Chat() {
     const refreshProviderStatus = async () => {
       try {
         const response = await fetch('/api/status', { cache: 'no-store' })
-        if (!response.ok) throw new Error(`Status request failed: ${response.status}`)
+        if (!response.ok) {
+          throw new Error(`Status request failed: ${response.status}`)
+        }
 
         const status = (await response.json()) as ProviderStatus
         if (!active) return
@@ -136,27 +284,88 @@ export function Chat() {
     }
   }, [])
 
-  const {
-    messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
-    error,
-    setInput,
-  } = useChat({
-    api: '/api/chat',
-    body: {
-      context: financialContext,
-    },
-  })
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
       behavior: 'smooth',
       block: 'end',
     })
   }, [messages, isLoading])
+
+  useEffect(() => {
+    if (isLoading || !activeChatId || !messages.length) return
+
+    const storedMessages = normalizeStoredMessages(messages)
+    const signature = historySignature(storedMessages)
+    if (!signature || signature === lastSavedSignatureRef.current) return
+
+    const parentOrigin = parentOriginRef.current
+    if (!parentOrigin) return
+
+    const timer = setTimeout(() => {
+      window.parent.postMessage(
+        {
+          type: 'lita:history:save',
+          payload: {
+            id: activeChatId,
+            title: threadTitle(storedMessages),
+            section: financialContext?.section || 'financial',
+            messages: storedMessages,
+            createdAt: activeCreatedAt || new Date().toISOString(),
+          },
+        },
+        parentOrigin,
+      )
+      lastSavedSignatureRef.current = signature
+    }, 650)
+
+    return () => clearTimeout(timer)
+  }, [
+    activeChatId,
+    activeCreatedAt,
+    financialContext?.section,
+    isLoading,
+    messages,
+  ])
+
+  const startNewChat = () => {
+    setMessages([])
+    setInput('')
+    setActiveChatId(createChatId())
+    setActiveCreatedAt(new Date().toISOString())
+    lastSavedSignatureRef.current = ''
+    setHistoryOpen(false)
+  }
+
+  const loadThread = (thread: ChatThread) => {
+    const restoredMessages = normalizeStoredMessages(thread.messages)
+    setMessages(restoredMessages)
+    setInput('')
+    setActiveChatId(thread.id)
+    setActiveCreatedAt(thread.createdAt || new Date().toISOString())
+    lastSavedSignatureRef.current = historySignature(restoredMessages)
+    setHistoryOpen(false)
+  }
+
+  const deleteThread = (threadId: string) => {
+    const parentOrigin = parentOriginRef.current
+    if (parentOrigin) {
+      window.parent.postMessage(
+        {
+          type: 'lita:history:delete',
+          payload: { id: threadId },
+        },
+        parentOrigin,
+      )
+    }
+
+    setHistoryThreads((current) =>
+      current.filter((thread) => thread.id !== threadId),
+    )
+
+    if (threadId === activeChatId) {
+      startNewChat()
+    }
+  }
 
   const contextLabel =
     financialContext?.section === 'portfolio'
@@ -189,7 +398,7 @@ export function Chat() {
       : null
 
   return (
-    <main className="flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <main className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-950 text-slate-100">
       <header className="shrink-0 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -212,31 +421,56 @@ export function Chat() {
             </div>
           </div>
 
-          <div
-            className={[
-              'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold',
-              providerStatus?.ready
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                : providerStatus
-                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                  : 'border-slate-700 bg-slate-900 text-slate-400',
-            ].join(' ')}
-            title={providerLabel || 'Configuración de IA pendiente'}
-          >
-            {providerStatus?.ready ? (
-              <CheckCircle2 className="h-3.5 w-3.5" />
-            ) : providerStatus ? (
-              <WifiOff className="h-3.5 w-3.5" />
-            ) : (
-              <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
-            )}
-            <span className="hidden sm:inline">
-              {providerStatus?.ready
-                ? 'IA lista'
-                : providerStatus
-                  ? 'IA sin configurar'
-                  : 'Comprobando'}
-            </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={startNewChat}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-violet-500/50 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+              aria-label="Nueva conversación"
+              title="Nueva conversación"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-violet-500/50 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+              aria-label="Historial de conversaciones"
+              title="Historial"
+            >
+              <History className="h-4 w-4" />
+              {historyThreads.length > 0 && (
+                <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-violet-400" />
+              )}
+            </button>
+
+            <div
+              className={[
+                'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-2 text-[11px] font-semibold',
+                providerStatus?.ready
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  : providerStatus
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                    : 'border-slate-700 bg-slate-900 text-slate-400',
+              ].join(' ')}
+              title={providerLabel || 'Configuración de IA pendiente'}
+            >
+              {providerStatus?.ready ? (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              ) : providerStatus ? (
+                <WifiOff className="h-3.5 w-3.5" />
+              ) : (
+                <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
+              )}
+              <span className="hidden sm:inline">
+                {providerStatus?.ready
+                  ? 'IA lista'
+                  : providerStatus
+                    ? 'IA sin configurar'
+                    : 'Comprobando'}
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -288,21 +522,27 @@ export function Chat() {
 
               {providerStatus && !providerStatus.ready && (
                 <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm text-amber-100">
-                  La interfaz está lista, pero todavía falta configurar al menos
-                  un proveedor/modelo de IA en Vercel.
+                  LITA no detecta un proveedor de IA disponible todavía. Se
+                  volverá a comprobar automáticamente.
                 </div>
               )}
             </div>
           )}
 
           <div className="space-y-4">
-            {messages.map((message) => {
+            {messages.map((message, index) => {
               const isUser = message.role === 'user'
+              const isStreamingAssistant =
+                isLoading &&
+                index === messages.length - 1 &&
+                message.role === 'assistant'
 
               return (
                 <div
                   key={message.id}
-                  className={`flex items-start gap-2.5 ${isUser ? 'justify-end' : 'justify-start'}`}
+                  className={`flex items-start gap-2.5 ${
+                    isUser ? 'justify-end' : 'justify-start'
+                  }`}
                 >
                   {!isUser && (
                     <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white">
@@ -312,15 +552,26 @@ export function Chat() {
 
                   <div
                     className={[
-                      'max-w-[84%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
+                      'min-w-0 max-w-[86%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
                       isUser
                         ? 'rounded-br-md bg-violet-600 text-white'
                         : 'rounded-bl-md border border-slate-800 bg-slate-900 text-slate-200',
                     ].join(' ')}
                   >
-                    <p className="whitespace-pre-wrap break-words">
-                      {message.content}
-                    </p>
+                    {isUser ? (
+                      <p className="whitespace-pre-wrap break-words">
+                        {message.content}
+                      </p>
+                    ) : (
+                      <div className="lita-markdown min-w-0 overflow-hidden">
+                        <Streamdown
+                          caret="circle"
+                          isAnimating={isStreamingAssistant}
+                        >
+                          {message.content}
+                        </Streamdown>
+                      </div>
+                    )}
                   </div>
 
                   {isUser && (
@@ -332,28 +583,34 @@ export function Chat() {
               )
             })}
 
-            {isLoading && (
-              <div className="flex items-start gap-2.5">
-                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white">
-                  <Bot className="h-4 w-4" />
-                </div>
-                <div className="rounded-2xl rounded-bl-md border border-slate-800 bg-slate-900 px-4 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:120ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:240ms]" />
-                    <span className="ml-2 text-xs font-medium text-slate-400">
-                      Analizando…
-                    </span>
+            {isLoading &&
+              !messages.some(
+                (message, index) =>
+                  index === messages.length - 1 &&
+                  message.role === 'assistant' &&
+                  message.content,
+              ) && (
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white">
+                    <Bot className="h-4 w-4" />
+                  </div>
+                  <div className="rounded-2xl rounded-bl-md border border-slate-800 bg-slate-900 px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:120ms]" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:240ms]" />
+                      <span className="ml-2 text-xs font-medium text-slate-400">
+                        Analizando…
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {error && (
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3 text-sm text-red-100">
                 {providerStatus && !providerStatus.ready
-                  ? 'No hay un proveedor de IA configurado todavía. Completá la configuración en Vercel y volvé a intentar.'
+                  ? 'No hay un proveedor de IA disponible todavía. LITA volverá a comprobar la configuración automáticamente.'
                   : 'LITA no pudo responder esta vez. El router intentará otro proveedor en la próxima consulta.'}
               </div>
             )}
@@ -382,7 +639,7 @@ export function Chat() {
               disabled={isLoading || providerStatus?.ready === false}
               placeholder={
                 providerStatus?.ready === false
-                  ? 'Configurá un proveedor de IA para comenzar'
+                  ? 'Esperando un proveedor de IA…'
                   : 'Preguntale a LITA…'
               }
               className="max-h-28 min-h-[24px] w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-slate-500 disabled:cursor-not-allowed"
@@ -413,6 +670,96 @@ export function Chat() {
           </button>
         </form>
       </footer>
+
+      {historyOpen && (
+        <section className="absolute inset-0 z-40 flex min-h-0 flex-col bg-slate-950">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+            <div>
+              <h2 className="text-base font-extrabold text-white">
+                Historial de LITA
+              </h2>
+              <p className="text-xs text-slate-400">
+                Conversaciones guardadas en tu cuenta de LTC
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(false)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+              aria-label="Cerrar historial"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="flex shrink-0 gap-2 border-b border-slate-800 px-4 py-3">
+            <button
+              type="button"
+              onClick={startNewChat}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2.5 text-sm font-bold text-white transition hover:bg-violet-500"
+            >
+              <Plus className="h-4 w-4" />
+              Nueva conversación
+            </button>
+          </div>
+
+          <div className="lita-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
+            {historyThreads.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 px-4 py-8 text-center">
+                <History className="mx-auto h-5 w-5 text-slate-500" />
+                <p className="mt-2 text-sm font-bold text-slate-300">
+                  Todavía no hay conversaciones guardadas
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  El historial aparece después de tu primera respuesta de LITA.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {historyThreads.map((thread) => (
+                  <div
+                    key={thread.id}
+                    className={[
+                      'flex items-stretch gap-2 rounded-2xl border p-2',
+                      thread.id === activeChatId
+                        ? 'border-violet-500/50 bg-violet-500/10'
+                        : 'border-slate-800 bg-slate-900/70',
+                    ].join(' ')}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => loadThread(thread)}
+                      className="min-w-0 flex-1 rounded-xl px-2 py-1.5 text-left transition hover:bg-slate-800/70"
+                    >
+                      <span className="block truncate text-sm font-bold text-slate-100">
+                        {thread.title}
+                      </span>
+                      <span className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+                        <span className="rounded-full border border-slate-700 px-1.5 py-0.5 uppercase tracking-wide text-slate-400">
+                          {thread.section === 'portfolio'
+                            ? 'Portfolio'
+                            : thread.section === 'transactions'
+                              ? 'Transacciones'
+                              : 'General'}
+                        </span>
+                        <span>{formatHistoryDate(thread.updatedAt)}</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteThread(thread.id)}
+                      className="inline-flex w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
+                      aria-label={`Eliminar ${thread.title}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </main>
   )
 }

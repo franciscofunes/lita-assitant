@@ -106,3 +106,48 @@
     border-radius: 9999px;
   }
 }
+
+@layer components {
+  .lita-markdown {
+    @apply text-slate-200;
+  }
+
+  .lita-markdown h1,
+  .lita-markdown h2,
+  .lita-markdown h3,
+  .lita-markdown h4 {
+    @apply font-bold text-white;
+  }
+
+  .lita-markdown strong {
+    @apply font-semibold text-white;
+  }
+
+  .lita-markdown a {
+    @apply text-violet-300 underline decoration-violet-400/50 underline-offset-2;
+  }
+
+  .lita-markdown code {
+    @apply rounded bg-slate-800 px-1 py-0.5 text-violet-200;
+  }
+
+  .lita-markdown pre {
+    @apply overflow-x-auto rounded-xl border border-slate-700 bg-slate-950 p-3 text-slate-200;
+  }
+
+  .lita-markdown table {
+    @apply my-3 w-full border-collapse overflow-hidden rounded-xl text-left text-xs sm:text-sm;
+  }
+
+  .lita-markdown th {
+    @apply border border-slate-700 bg-slate-800 px-2.5 py-2 font-semibold text-slate-100;
+  }
+
+  .lita-markdown td {
+    @apply border border-slate-800 bg-slate-900/70 px-2.5 py-2 align-top text-slate-300;
+  }
+
+  .lita-markdown blockquote {
+    @apply border-l-2 border-violet-400/60 pl-3 text-slate-300;
+  }
+}

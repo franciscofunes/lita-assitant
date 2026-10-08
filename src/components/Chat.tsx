@@ -410,7 +410,7 @@ export function Chat() {
                 <h1 className="truncate text-base font-extrabold tracking-tight">
                   LITA
                 </h1>
-                <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-300">
+                <span className="inline-flex items-center gap-1 rounded-full border border-violet-400/25 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-100">
                   {contextIcon}
                   {contextLabel}
                 </span>
@@ -425,7 +425,7 @@ export function Chat() {
             <button
               type="button"
               onClick={startNewChat}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-violet-500/50 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-600 bg-slate-900/90 text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
               aria-label="Nueva conversación"
               title="Nueva conversación"
             >
@@ -435,7 +435,7 @@ export function Chat() {
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
-              className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-violet-500/50 hover:text-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-600 bg-slate-900/90 text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
               aria-label="Historial de conversaciones"
               title="Historial"
             >
@@ -545,7 +545,7 @@ export function Chat() {
                   }`}
                 >
                   {!isUser && (
-                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white">
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-400/30 bg-violet-500/15 text-violet-100">
                       <Bot className="h-4 w-4" />
                     </div>
                   )}
@@ -575,7 +575,7 @@ export function Chat() {
                   </div>
 
                   {isUser && (
-                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300">
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/90 text-white">
                       <User className="h-4 w-4" />
                     </div>
                   )}
@@ -591,7 +591,7 @@ export function Chat() {
                   message.content,
               ) && (
                 <div className="flex items-start gap-2.5">
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white">
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-400/30 bg-violet-500/15 text-violet-100">
                     <Bot className="h-4 w-4" />
                   </div>
                   <div className="rounded-2xl rounded-bl-md border border-slate-800 bg-slate-900 px-4 py-3">
@@ -685,7 +685,7 @@ export function Chat() {
             <button
               type="button"
               onClick={() => setHistoryOpen(false)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-600 bg-slate-900 text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100"
               aria-label="Cerrar historial"
             >
               <X className="h-4 w-4" />

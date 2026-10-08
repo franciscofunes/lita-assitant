@@ -421,7 +421,7 @@ export function Chat() {
         setSaveStatus('error')
         setSaveError('El guardado no fue confirmado. Podés reintentar.')
       }, 10000)
-    }, 650)
+    }, 50)
 
     return () => clearTimeout(timer)
   }, [

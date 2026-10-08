@@ -92,23 +92,47 @@ export function Chat() {
 
   useEffect(() => {
     let active = true
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-    fetch('/api/status', { cache: 'no-store' })
-      .then((response) => response.json())
-      .then((status: ProviderStatus) => {
-        if (active) setProviderStatus(status)
-      })
-      .catch(() => {
-        if (active) {
-          setProviderStatus({
-            ready: false,
-            providers: [],
-          })
+    const refreshProviderStatus = async () => {
+      try {
+        const response = await fetch('/api/status', { cache: 'no-store' })
+        if (!response.ok) throw new Error(`Status request failed: ${response.status}`)
+
+        const status = (await response.json()) as ProviderStatus
+        if (!active) return
+
+        setProviderStatus(status)
+
+        if (!status.ready) {
+          retryTimer = setTimeout(refreshProviderStatus, 5000)
         }
-      })
+      } catch {
+        if (!active) return
+
+        setProviderStatus({
+          ready: false,
+          providers: [],
+        })
+        retryTimer = setTimeout(refreshProviderStatus, 5000)
+      }
+    }
+
+    const handleVisibilityOrFocus = () => {
+      if (!active || document.visibilityState === 'hidden') return
+      if (retryTimer) clearTimeout(retryTimer)
+      void refreshProviderStatus()
+    }
+
+    void refreshProviderStatus()
+    window.addEventListener('focus', handleVisibilityOrFocus)
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus)
 
     return () => {
       active = false
+      if (retryTimer) clearTimeout(retryTimer)
+      window.removeEventListener('focus', handleVisibilityOrFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
     }
   }, [])
 

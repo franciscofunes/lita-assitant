@@ -102,6 +102,20 @@ const gatewayBody = (provider: AiProvider) => {
   }
 }
 
+const providerGenerationOptions = (provider: AiProvider) => {
+  if (
+    provider.id === 'groq' &&
+    provider.model.startsWith('openai/gpt-oss-')
+  ) {
+    return {
+      reasoning_effort: 'low',
+      reasoning_format: 'hidden',
+    }
+  }
+
+  return {}
+}
+
 async function completion(provider: AiProvider, messages: ChatMessage[]) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), getProviderTimeoutMs())
@@ -125,6 +139,7 @@ async function completion(provider: AiProvider, messages: ChatMessage[]) {
         messages,
         max_tokens: asPositiveInt(process.env.LITA_MAX_OUTPUT_TOKENS, 700),
         temperature: 0.2,
+        ...providerGenerationOptions(provider),
         ...gatewayBody(provider),
       }),
       signal: controller.signal,
@@ -140,6 +155,60 @@ const cancelBody = async (response: Response) => {
   } catch {
     // Ignore cleanup failures while moving to the next provider.
   }
+}
+
+const ensureVisibleAssistantStream = async (
+  stream: ReadableStream<Uint8Array>,
+) => {
+  const reader = stream.getReader()
+  const bufferedChunks: Uint8Array[] = []
+  const decoder = new TextDecoder()
+  let visibleText = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        reader.releaseLock()
+        return null
+      }
+
+      if (!value) continue
+
+      bufferedChunks.push(value)
+      visibleText += decoder.decode(value, { stream: true })
+
+      if (visibleText.trim()) break
+    }
+  } catch (error) {
+    reader.releaseLock()
+    throw error
+  }
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      bufferedChunks.forEach((chunk) => controller.enqueue(chunk))
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) {
+            controller.close()
+            break
+          }
+
+          if (value) controller.enqueue(value)
+        }
+      } catch (error) {
+        controller.error(error)
+      } finally {
+        reader.releaseLock()
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason)
+    },
+  })
 }
 
 const providerErrorSummary = async (response: Response) => {
@@ -220,8 +289,18 @@ export async function POST(req: Request) {
       }
 
       const stream = OpenAIStream(response)
+      const visibleStream = await ensureVisibleAssistantStream(stream)
 
-      return new StreamingTextResponse(stream, {
+      if (!visibleStream) {
+        attempts.push(`${provider.id}:empty`)
+        console.warn('[lita-ai] provider returned an empty assistant stream', {
+          provider: provider.id,
+          durationMs: Date.now() - startedAt,
+        })
+        continue
+      }
+
+      return new StreamingTextResponse(visibleStream, {
         headers: {
           'X-Lita-Provider': provider.id,
           'X-Lita-Attempts': String(attempts.length),

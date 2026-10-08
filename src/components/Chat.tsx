@@ -66,7 +66,7 @@ const defaultParentOrigins = [
 
 // Netlify deploy previews belong to this exact LTC site; other Netlify sites
 // and arbitrary origins are not trusted.
-const trustedLtcPreviewOrigin = /^https:\/\/deploy-preview-\\d+--lleva-tus-cuentas\\.netlify\\.app$/
+const trustedLtcPreviewOrigin = /^https:\/\/deploy-preview-\d+--lleva-tus-cuentas\.netlify\.app$/
 
 const configuredParentOrigins = () =>
   (process.env.NEXT_PUBLIC_LITA_PARENT_ORIGINS || '')

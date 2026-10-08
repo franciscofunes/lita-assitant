@@ -142,6 +142,34 @@ const cancelBody = async (response: Response) => {
   }
 }
 
+const providerErrorSummary = async (response: Response) => {
+  try {
+    const raw = await response.text()
+    if (!raw) return undefined
+
+    try {
+      const parsed = JSON.parse(raw) as {
+        error?: { code?: unknown; type?: unknown; message?: unknown }
+      }
+      const error = parsed?.error
+      if (!error) return raw.slice(0, 240)
+
+      return {
+        code: typeof error.code === 'string' ? error.code : undefined,
+        type: typeof error.type === 'string' ? error.type : undefined,
+        message:
+          typeof error.message === 'string'
+            ? error.message.slice(0, 240)
+            : undefined,
+      }
+    } catch {
+      return raw.slice(0, 240)
+    }
+  } catch {
+    return undefined
+  }
+}
+
 export async function POST(req: Request) {
   let body: { messages?: unknown; context?: FinancialContext | null }
 
@@ -182,7 +210,12 @@ export async function POST(req: Request) {
       })
 
       if (!response.ok) {
-        await cancelBody(response)
+        const error = await providerErrorSummary(response)
+        console.warn('[lita-ai] provider rejected request', {
+          provider: provider.id,
+          status: response.status,
+          error,
+        })
         continue
       }
 

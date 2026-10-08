@@ -161,7 +161,7 @@ const normalizeHistory = (value: unknown): ChatThread[] => {
 const markdownComponents = {
   table: ({ children }: Record<string, unknown>) => (
     <table className="lita-financial-table w-full border-collapse text-left text-xs sm:text-sm">
-      {children}
+      {children as ReactNode}
     </table>
   ),
   thead: ({ children }: Record<string, unknown>) => <thead>{children as ReactNode}</thead>,

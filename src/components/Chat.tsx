@@ -159,19 +159,19 @@ const normalizeHistory = (value: unknown): ChatThread[] => {
 // Do not rely on Streamdown's built-in table colors: the host controls dark
 // mode across an iframe and Streamdown may inject light-only table classes.
 const markdownComponents = {
-  table: ({ children }: { children?: ReactNode }) => (
+  table: ({ children }: Record<string, unknown>) => (
     <table className="lita-financial-table w-full border-collapse text-left text-xs sm:text-sm">
       {children}
     </table>
   ),
-  thead: ({ children }: { children?: ReactNode }) => <thead>{children}</thead>,
-  tbody: ({ children }: { children?: ReactNode }) => <tbody>{children}</tbody>,
-  tr: ({ children }: { children?: ReactNode }) => <tr>{children}</tr>,
-  th: ({ children }: { children?: ReactNode }) => (
-    <th className="lita-financial-th border px-2.5 py-2 align-top font-semibold">{children}</th>
+  thead: ({ children }: Record<string, unknown>) => <thead>{children as ReactNode}</thead>,
+  tbody: ({ children }: Record<string, unknown>) => <tbody>{children as ReactNode}</tbody>,
+  tr: ({ children }: Record<string, unknown>) => <tr>{children as ReactNode}</tr>,
+  th: ({ children }: Record<string, unknown>) => (
+    <th className="lita-financial-th border px-2.5 py-2 align-top font-semibold">{children as ReactNode}</th>
   ),
-  td: ({ children }: { children?: ReactNode }) => (
-    <td className="lita-financial-td border px-2.5 py-2 align-top">{children}</td>
+  td: ({ children }: Record<string, unknown>) => (
+    <td className="lita-financial-td border px-2.5 py-2 align-top">{children as ReactNode}</td>
   ),
 }
 

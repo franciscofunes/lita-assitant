@@ -34,6 +34,7 @@
     "tailwindcss": "3.3.3",
     "tailwindcss-animate": "^1.0.6",
     "typescript": "5.1.6",
-    "@vercel/oidc": "3.8.7"
+    "@vercel/oidc": "3.8.7",
+    "streamdown": "^2.7.0"
   }
 }

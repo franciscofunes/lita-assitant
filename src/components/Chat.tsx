@@ -64,6 +64,10 @@ const defaultParentOrigins = [
   'http://localhost:3000',
 ]
 
+// Netlify deploy previews belong to this exact LTC site; other Netlify sites
+// and arbitrary origins are not trusted.
+const trustedLtcPreviewOrigin = /^https:\/\/deploy-preview-\\d+--lleva-tus-cuentas\\.netlify\\.app$/
+
 const configuredParentOrigins = () =>
   (process.env.NEXT_PUBLIC_LITA_PARENT_ORIGINS || '')
     .split(',')
@@ -228,7 +232,7 @@ export function Chat() {
 
   useEffect(() => {
     const handleParentMessage = (event: MessageEvent) => {
-      if (!allowedParentOrigins.has(event.origin) || event.source !== window.parent) return
+      if (event.source !== window.parent || !(allowedParentOrigins.has(event.origin) || trustedLtcPreviewOrigin.test(event.origin))) return
       parentOriginRef.current = event.origin
 
       if (event.data?.type === 'lita:theme') {

@@ -17,7 +17,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { Streamdown } from 'streamdown'
 
 type FinancialContext = {
@@ -159,19 +159,19 @@ const normalizeHistory = (value: unknown): ChatThread[] => {
 // Do not rely on Streamdown's built-in table colors: the host controls dark
 // mode across an iframe and Streamdown may inject light-only table classes.
 const markdownComponents = {
-  table: ({ children }: Record<string, unknown>) => (
+  table: ({ children }: ComponentProps<'table'>) => (
     <table className="lita-financial-table w-full border-collapse text-left text-xs sm:text-sm">
-      {children as ReactNode}
+      {children}
     </table>
   ),
-  thead: ({ children }: Record<string, unknown>) => <thead>{children as ReactNode}</thead>,
-  tbody: ({ children }: Record<string, unknown>) => <tbody>{children as ReactNode}</tbody>,
-  tr: ({ children }: Record<string, unknown>) => <tr>{children as ReactNode}</tr>,
-  th: ({ children }: Record<string, unknown>) => (
-    <th className="lita-financial-th border px-2.5 py-2 align-top font-semibold">{children as ReactNode}</th>
+  thead: ({ children }: ComponentProps<'thead'>) => <thead>{children}</thead>,
+  tbody: ({ children }: ComponentProps<'tbody'>) => <tbody>{children}</tbody>,
+  tr: ({ children }: ComponentProps<'tr'>) => <tr>{children}</tr>,
+  th: ({ children }: ComponentProps<'th'>) => (
+    <th className="lita-financial-th border px-2.5 py-2 align-top font-semibold">{children}</th>
   ),
-  td: ({ children }: Record<string, unknown>) => (
-    <td className="lita-financial-td border px-2.5 py-2 align-top">{children as ReactNode}</td>
+  td: ({ children }: ComponentProps<'td'>) => (
+    <td className="lita-financial-td border px-2.5 py-2 align-top">{children}</td>
   ),
 }
 

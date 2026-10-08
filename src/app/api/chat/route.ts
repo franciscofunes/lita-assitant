@@ -142,6 +142,60 @@ const cancelBody = async (response: Response) => {
   }
 }
 
+const ensureVisibleAssistantStream = async (
+  stream: ReadableStream<Uint8Array>,
+) => {
+  const reader = stream.getReader()
+  const bufferedChunks: Uint8Array[] = []
+  const decoder = new TextDecoder()
+  let visibleText = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        reader.releaseLock()
+        return null
+      }
+
+      if (!value) continue
+
+      bufferedChunks.push(value)
+      visibleText += decoder.decode(value, { stream: true })
+
+      if (visibleText.trim()) break
+    }
+  } catch (error) {
+    reader.releaseLock()
+    throw error
+  }
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      bufferedChunks.forEach((chunk) => controller.enqueue(chunk))
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) {
+            controller.close()
+            break
+          }
+
+          if (value) controller.enqueue(value)
+        }
+      } catch (error) {
+        controller.error(error)
+      } finally {
+        reader.releaseLock()
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason)
+    },
+  })
+}
+
 const providerErrorSummary = async (response: Response) => {
   try {
     const raw = await response.text()
@@ -220,8 +274,18 @@ export async function POST(req: Request) {
       }
 
       const stream = OpenAIStream(response)
+      const visibleStream = await ensureVisibleAssistantStream(stream)
 
-      return new StreamingTextResponse(stream, {
+      if (!visibleStream) {
+        attempts.push(`${provider.id}:empty`)
+        console.warn('[lita-ai] provider returned an empty assistant stream', {
+          provider: provider.id,
+          durationMs: Date.now() - startedAt,
+        })
+        continue
+      }
+
+      return new StreamingTextResponse(visibleStream, {
         headers: {
           'X-Lita-Provider': provider.id,
           'X-Lita-Attempts': String(attempts.length),

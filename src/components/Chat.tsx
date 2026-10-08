@@ -20,8 +20,25 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Streamdown } from 'streamdown'
 
+type SpendingCategory = {
+  category: string
+  totalArs: number
+  transactionCount: number
+  percentOfSpending?: number
+}
+
+type SpendingBreakdown = {
+  currency: 'ARS'
+  scope: 'current-view'
+  totalArs: number
+  transactionCount: number
+  invalidAmountCount: number
+  categories: SpendingCategory[]
+}
+
 type FinancialContext = {
   section?: string
+  spendingByCategory?: SpendingBreakdown
   [key: string]: unknown
 }
 
@@ -163,6 +180,25 @@ const normalizeHistory = (value: unknown): ChatThread[] => {
 const markdownChildren = (props: unknown): ReactNode =>
   (props as { children?: ReactNode }).children
 
+const financialTableCellContent = (props: unknown) => {
+  const children = markdownChildren(props)
+  const isEmpty = children === undefined || children === null ||
+    (typeof children === 'string' && children.trim() === '') ||
+    (Array.isArray(children) && children.length === 0)
+
+  return isEmpty ? (
+    <span title="La respuesta no incluyó este dato" className="text-amber-700 dark:text-amber-300">
+      Dato no disponible
+    </span>
+  ) : children
+}
+
+const arsFormatter = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 2,
+})
+
 const markdownComponents = {
   table: (props: unknown) => (
     <table className="lita-financial-table w-full border-collapse text-left text-xs sm:text-sm">
@@ -176,7 +212,7 @@ const markdownComponents = {
     <th className="lita-financial-th border px-2.5 py-2 align-top font-semibold">{markdownChildren(props)}</th>
   ),
   td: (props: unknown) => (
-    <td className="lita-financial-td border px-2.5 py-2 align-top">{markdownChildren(props)}</td>
+    <td className="lita-financial-td border px-2.5 py-2 align-top">{financialTableCellContent(props)}</td>
   ),
 }
 
@@ -529,6 +565,11 @@ export function Chat() {
         ? transactionPrompts
         : genericPrompts
 
+  const verifiedSpending = financialContext?.section === 'transactions' &&
+    financialContext.spendingByCategory?.currency === 'ARS'
+      ? financialContext.spendingByCategory
+      : null
+
   const providerLabel =
     providerStatus?.ready && providerStatus.providers.length
       ? providerStatus.providers.length === 1
@@ -710,6 +751,34 @@ export function Chat() {
                         >
                           {message.content}
                         </Streamdown>
+                        {!isLoading && verifiedSpending &&
+                          index === messages.length - 1 &&
+                          /gast|egres|consum|dinero|presupuesto|categor[ií]a/i.test(
+                            [...messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '',
+                          ) && (
+                            <div className="mt-4 rounded-xl border border-emerald-600/25 bg-emerald-50 p-3 text-xs text-slate-800 dark:border-emerald-500/25 dark:bg-emerald-950/20 dark:text-slate-200">
+                              <p className="font-semibold text-emerald-800 dark:text-emerald-200">
+                                Gastos calculados por LTC · ARS
+                              </p>
+                              {verifiedSpending.categories.length > 0 ? (
+                                <ul className="mt-2 space-y-2">
+                                  {verifiedSpending.categories.slice(0, 3).map((entry) => (
+                                    <li key={entry.category} className="flex items-start justify-between gap-3">
+                                      <span className="min-w-0 break-words">{entry.category}</span>
+                                      <span className="shrink-0 font-bold tabular-nums">
+                                        {arsFormatter.format(entry.totalArs)}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-2">No hay gastos con importes válidos en la vista actual.</p>
+                              )}
+                              <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-400">
+                                Totales del período visible en Transacciones. Un resumen de tarjeta representa el pago registrado, no las compras individuales.
+                              </p>
+                            </div>
+                          )}
                       </div>
                     )}
                   </div>

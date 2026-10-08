@@ -17,7 +17,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Streamdown } from 'streamdown'
 
 type FinancialContext = {
@@ -156,6 +156,30 @@ const normalizeHistory = (value: unknown): ChatThread[] => {
     })
 }
 
+// Do not rely on Streamdown's built-in table colors: the host controls dark
+// mode across an iframe and Streamdown may inject light-only table classes.
+// Streamdown v2 accepts either standard HTML props or its generic Markdown
+// record props. Use an unknown boundary to support both prop contracts.
+const markdownChildren = (props: unknown): ReactNode =>
+  (props as { children?: ReactNode }).children
+
+const markdownComponents = {
+  table: (props: unknown) => (
+    <table className="lita-financial-table w-full border-collapse text-left text-xs sm:text-sm">
+      {markdownChildren(props)}
+    </table>
+  ),
+  thead: (props: unknown) => <thead>{markdownChildren(props)}</thead>,
+  tbody: (props: unknown) => <tbody>{markdownChildren(props)}</tbody>,
+  tr: (props: unknown) => <tr>{markdownChildren(props)}</tr>,
+  th: (props: unknown) => (
+    <th className="lita-financial-th border px-2.5 py-2 align-top font-semibold">{markdownChildren(props)}</th>
+  ),
+  td: (props: unknown) => (
+    <td className="lita-financial-td border px-2.5 py-2 align-top">{markdownChildren(props)}</td>
+  ),
+}
+
 const historySignature = (messages: StoredChatMessage[]) =>
   JSON.stringify(
     messages.map(({ role, content }) => ({
@@ -191,6 +215,7 @@ export function Chat() {
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatus | null>(null)
   const [historyThreads, setHistoryThreads] = useState<ChatThread[]>([])
+  const [hostConnected, setHostConnected] = useState(false)
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>({ state: 'loading' })
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState('')
@@ -234,6 +259,7 @@ export function Chat() {
     const handleParentMessage = (event: MessageEvent) => {
       if (event.source !== window.parent || !(allowedParentOrigins.has(event.origin) || trustedLtcPreviewOrigin.test(event.origin))) return
       parentOriginRef.current = event.origin
+      setHostConnected(true)
 
       if (event.data?.type === 'lita:theme') {
         if (event.data.payload !== 'dark' && event.data.payload !== 'light') return
@@ -371,7 +397,7 @@ export function Chat() {
     if (!signature || signature === lastSavedSignatureRef.current) return
 
     const parentOrigin = parentOriginRef.current
-    if (!parentOrigin) return
+    if (!parentOrigin || !hostConnected) return
     if (pendingSaveRef.current?.signature === signature) return
 
     const timer = setTimeout(() => {
@@ -400,13 +426,14 @@ export function Chat() {
         setSaveStatus('error')
         setSaveError('El guardado no fue confirmado. Podés reintentar.')
       }, 10000)
-    }, 650)
+    }, 50)
 
     return () => clearTimeout(timer)
   }, [
     activeChatId,
     activeCreatedAt,
     financialContext?.section,
+    hostConnected,
     isLoading,
     messages,
     saveAttempt,
@@ -677,6 +704,7 @@ export function Chat() {
                     ) : (
                       <div className="lita-markdown min-w-0 overflow-hidden">
                         <Streamdown
+                          components={markdownComponents}
                           caret="circle"
                           isAnimating={isStreamingAssistant}
                         >

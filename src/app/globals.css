@@ -184,3 +184,47 @@
 .lita-markdown code {
   overflow-wrap: anywhere;
 }
+
+/* Streamdown v2 table wrappers and custom table cells, fully theme-scoped.
+   Do not let library defaults mix a white table surface with light text.
+   The iframe's html.dark class is set by the trusted LTC parent. */
+.lita-markdown [data-streamdown="table"],
+.lita-markdown [data-streamdown="table-container"],
+.lita-markdown .lita-financial-table {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+.lita-markdown .lita-financial-table :is(thead, tbody, tr) {
+  background-color: inherit !important;
+  color: inherit !important;
+}
+.lita-markdown .lita-financial-th {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.lita-markdown .lita-financial-td {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  border-color: #e2e8f0 !important;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+html.dark .lita-markdown [data-streamdown="table"],
+html.dark .lita-markdown [data-streamdown="table-container"],
+html.dark .lita-markdown .lita-financial-table {
+  background-color: #0f172a !important;
+  color: #f1f5f9 !important;
+}
+html.dark .lita-markdown .lita-financial-th {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+html.dark .lita-markdown .lita-financial-td {
+  background-color: #0f172a !important;
+  color: #e2e8f0 !important;
+  border-color: #334155 !important;
+}

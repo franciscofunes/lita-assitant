@@ -74,7 +74,7 @@
   }
   html,
   body {
-    @apply min-h-full bg-slate-950 text-slate-100;
+    @apply min-h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
   }
 
   body {
@@ -83,7 +83,7 @@
   }
 
   ::selection {
-    @apply bg-violet-500/40 text-white;
+    @apply bg-violet-500/30 text-slate-950 dark:bg-violet-500/40 dark:text-white;
   }
 }
 
@@ -109,45 +109,78 @@
 
 @layer components {
   .lita-markdown {
-    @apply text-slate-200;
+    @apply text-slate-800 dark:text-slate-200;
   }
 
   .lita-markdown h1,
   .lita-markdown h2,
   .lita-markdown h3,
   .lita-markdown h4 {
-    @apply font-bold text-white;
+    @apply font-bold text-slate-950 dark:text-white;
   }
 
   .lita-markdown strong {
-    @apply font-semibold text-white;
+    @apply font-semibold text-slate-950 dark:text-white;
   }
 
   .lita-markdown a {
-    @apply text-violet-300 underline decoration-violet-400/50 underline-offset-2;
+    @apply text-violet-700 underline decoration-violet-400/50 underline-offset-2 dark:text-violet-300;
   }
 
   .lita-markdown code {
-    @apply rounded bg-slate-800 px-1 py-0.5 text-violet-200;
+    @apply rounded bg-slate-200 px-1 py-0.5 text-violet-900 dark:bg-slate-800 dark:text-violet-200;
   }
 
   .lita-markdown pre {
-    @apply overflow-x-auto rounded-xl border border-slate-700 bg-slate-950 p-3 text-slate-200;
+    @apply overflow-x-auto rounded-xl border border-slate-300 bg-slate-100 p-3 text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200;
   }
 
   .lita-markdown table {
-    @apply my-3 w-full border-collapse overflow-hidden rounded-xl text-left text-xs sm:text-sm;
+    @apply my-3 w-full border-collapse rounded-xl bg-white text-left text-xs text-slate-800 dark:bg-slate-900 dark:text-slate-200 sm:text-sm;
   }
 
   .lita-markdown th {
-    @apply border border-slate-700 bg-slate-800 px-2.5 py-2 font-semibold text-slate-100;
+    @apply border border-slate-300 bg-slate-100 px-2.5 py-2 font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100;
   }
 
   .lita-markdown td {
-    @apply border border-slate-800 bg-slate-900/70 px-2.5 py-2 align-top text-slate-300;
+    @apply border border-slate-200 bg-white px-2.5 py-2 align-top text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200;
   }
 
   .lita-markdown blockquote {
-    @apply border-l-2 border-violet-400/60 pl-3 text-slate-300;
+    @apply border-l-2 border-violet-400/60 pl-3 text-slate-700 dark:text-slate-300;
   }
+}
+
+
+/* Streamdown may apply its own light table backgrounds. Keep both table
+   surfaces AND text tied to the host theme instead of inheriting mixed colors. */
+.lita-markdown table,
+.lita-markdown thead,
+.lita-markdown tbody,
+.lita-markdown tr {
+  color: inherit;
+}
+.lita-markdown th {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+.lita-markdown td {
+  background: #ffffff !important;
+  color: #1e293b !important;
+}
+.dark .lita-markdown th {
+  background: #1e293b !important;
+  color: #f1f5f9 !important;
+}
+.dark .lita-markdown td {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+}
+.lita-markdown table {
+  max-width: 100%;
+}
+.lita-markdown a,
+.lita-markdown code {
+  overflow-wrap: anywhere;
 }

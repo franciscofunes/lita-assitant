@@ -211,8 +211,15 @@ export function Chat() {
 
   useEffect(() => {
     const handleParentMessage = (event: MessageEvent) => {
-      if (!allowedParentOrigins.has(event.origin)) return
+      if (!allowedParentOrigins.has(event.origin) || event.source !== window.parent) return
       parentOriginRef.current = event.origin
+
+      if (event.data?.type === 'lita:theme') {
+        if (event.data.payload !== 'dark' && event.data.payload !== 'light') return
+        document.documentElement.classList.toggle('dark', event.data.payload === 'dark')
+        document.documentElement.style.colorScheme = event.data.payload
+        return
+      }
 
       if (
         event.data?.type === 'lita:context' &&
@@ -235,6 +242,20 @@ export function Chat() {
       window.removeEventListener('message', handleParentMessage)
     }
   }, [allowedParentOrigins])
+
+  // Standalone LITA follows the OS; embedded LITA follows only the trusted host.
+  useEffect(() => {
+    if (window.parent !== window) return
+
+    const preference = window.matchMedia('(prefers-color-scheme: dark)')
+    const updateTheme = () => {
+      document.documentElement.classList.toggle('dark', preference.matches)
+      document.documentElement.style.colorScheme = preference.matches ? 'dark' : 'light'
+    }
+    updateTheme()
+    preference.addEventListener('change', updateTheme)
+    return () => preference.removeEventListener('change', updateTheme)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -398,8 +419,8 @@ export function Chat() {
       : null
 
   return (
-    <main className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-950 text-slate-100">
-      <header className="shrink-0 border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur">
+    <main className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+      <header className="shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-950/30">
@@ -410,12 +431,12 @@ export function Chat() {
                 <h1 className="truncate text-base font-extrabold tracking-tight">
                   LITA
                 </h1>
-                <span className="inline-flex items-center gap-1 rounded-full border border-violet-400/25 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-100">
+                <span className="inline-flex items-center gap-1 rounded-full border border-violet-400/25 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-100">
                   {contextIcon}
                   {contextLabel}
                 </span>
               </div>
-              <p className="truncate text-xs text-slate-400">
+              <p className="truncate text-xs text-slate-600 dark:text-slate-400">
                 Tu asistente financiero de Lleva Tus Cuentas
               </p>
             </div>
@@ -425,7 +446,7 @@ export function Chat() {
             <button
               type="button"
               onClick={startNewChat}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-600 bg-slate-900/90 text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900/90 text-slate-900 dark:text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
               aria-label="Nueva conversación"
               title="Nueva conversación"
             >
@@ -435,7 +456,7 @@ export function Chat() {
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
-              className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-600 bg-slate-900/90 text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900/90 text-slate-900 dark:text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
               aria-label="Historial de conversaciones"
               title="Historial"
             >
@@ -449,10 +470,10 @@ export function Chat() {
               className={[
                 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-2 text-[11px] font-semibold',
                 providerStatus?.ready
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                   : providerStatus
-                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                    : 'border-slate-700 bg-slate-900 text-slate-400',
+                    ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                    : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400',
               ].join(' ')}
               title={providerLabel || 'Configuración de IA pendiente'}
             >
@@ -479,16 +500,16 @@ export function Chat() {
         <div className="mx-auto flex w-full max-w-2xl flex-col">
           {messages.length === 0 && (
             <div className="mb-6">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
+              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-5 shadow-xl shadow-black/10">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-700 dark:text-violet-300">
                     <Sparkles className="h-4 w-4" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-extrabold text-white">
+                    <h2 className="text-lg font-extrabold text-slate-950 dark:text-white">
                       ¿Qué querés analizar?
                     </h2>
-                    <p className="mt-1 text-sm leading-relaxed text-slate-400">
+                    <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
                       Puedo trabajar con el contexto de {contextLabel.toLowerCase()}
                       {' '}que recibo desde LTC. No voy a inventar valores que no estén
                       disponibles.
@@ -502,15 +523,15 @@ export function Chat() {
                       key={prompt}
                       type="button"
                       onClick={() => setInput(prompt)}
-                      className="group flex w-full items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/70 px-3.5 py-3 text-left text-sm font-semibold text-slate-200 transition hover:border-violet-500/60 hover:bg-violet-500/10"
+                      className="group flex w-full items-center justify-between gap-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-950/70 px-3.5 py-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-200 transition hover:border-violet-500/60 hover:bg-violet-500/10"
                     >
                       <span>{prompt}</span>
-                      <Send className="h-4 w-4 shrink-0 text-slate-500 transition group-hover:text-violet-300" />
+                      <Send className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-500 transition group-hover:text-violet-300" />
                     </button>
                   ))}
                 </div>
 
-                <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-xs leading-relaxed text-slate-400">
+                <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
                   <span>
                     LITA separa monedas, diferencia movimientos de ganancias y
@@ -521,7 +542,7 @@ export function Chat() {
               </div>
 
               {providerStatus && !providerStatus.ready && (
-                <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm text-amber-100">
+                <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm text-amber-900 dark:text-amber-100">
                   LITA no detecta un proveedor de IA disponible todavía. Se
                   volverá a comprobar automáticamente.
                 </div>
@@ -545,7 +566,7 @@ export function Chat() {
                   }`}
                 >
                   {!isUser && (
-                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-400/30 bg-violet-500/15 text-violet-100">
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-400/30 bg-violet-500/15 text-violet-700 dark:text-violet-100">
                       <Bot className="h-4 w-4" />
                     </div>
                   )}
@@ -555,7 +576,7 @@ export function Chat() {
                       'min-w-0 max-w-[86%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
                       isUser
                         ? 'rounded-br-md bg-violet-600 text-white'
-                        : 'rounded-bl-md border border-slate-800 bg-slate-900 text-slate-200',
+                        : 'rounded-bl-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200',
                     ].join(' ')}
                   >
                     {isUser ? (
@@ -575,7 +596,7 @@ export function Chat() {
                   </div>
 
                   {isUser && (
-                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/90 text-white">
+                    <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-800 text-white dark:border-slate-600">
                       <User className="h-4 w-4" />
                     </div>
                   )}
@@ -591,15 +612,15 @@ export function Chat() {
                   message.content,
               ) && (
                 <div className="flex items-start gap-2.5">
-                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-400/30 bg-violet-500/15 text-violet-100">
+                  <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-400/30 bg-violet-500/15 text-violet-700 dark:text-violet-100">
                     <Bot className="h-4 w-4" />
                   </div>
-                  <div className="rounded-2xl rounded-bl-md border border-slate-800 bg-slate-900 px-4 py-3">
+                  <div className="rounded-2xl rounded-bl-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
                     <div className="flex items-center gap-1.5">
                       <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400" />
                       <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:120ms]" />
                       <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:240ms]" />
-                      <span className="ml-2 text-xs font-medium text-slate-400">
+                      <span className="ml-2 text-xs font-medium text-slate-600 dark:text-slate-400">
                         Analizando…
                       </span>
                     </div>
@@ -608,7 +629,7 @@ export function Chat() {
               )}
 
             {error && (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3 text-sm text-red-100">
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3 text-sm text-red-800 dark:text-red-100">
                 {providerStatus && !providerStatus.ready
                   ? 'No hay un proveedor de IA disponible todavía. LITA volverá a comprobar la configuración automáticamente.'
                   : 'LITA no pudo responder esta vez. El router intentará otro proveedor en la próxima consulta.'}
@@ -620,12 +641,12 @@ export function Chat() {
         </div>
       </section>
 
-      <footer className="shrink-0 border-t border-slate-800 bg-slate-950/95 p-3.5 backdrop-blur sm:p-4">
+      <footer className="shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 p-3.5 backdrop-blur sm:p-4">
         <form
           className="mx-auto flex w-full max-w-2xl items-end gap-2"
           onSubmit={handleSubmit}
         >
-          <div className="min-w-0 flex-1 rounded-2xl border border-slate-700 bg-slate-900 px-3.5 py-2.5 transition focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/20">
+          <div className="min-w-0 flex-1 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 transition focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/20">
             <textarea
               rows={1}
               value={input}
@@ -642,14 +663,14 @@ export function Chat() {
                   ? 'Esperando un proveedor de IA…'
                   : 'Preguntale a LITA…'
               }
-              className="max-h-28 min-h-[24px] w-full resize-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-slate-500 disabled:cursor-not-allowed"
+              className="max-h-28 min-h-[24px] w-full resize-none bg-transparent text-sm leading-6 text-slate-900 dark:text-white outline-none placeholder:text-slate-500 dark:placeholder:text-slate-500 disabled:cursor-not-allowed"
             />
             <div className="mt-1 flex items-center justify-between gap-2">
-              <span className="text-[10px] text-slate-500">
+              <span className="text-[10px] text-slate-500 dark:text-slate-500">
                 Enter para enviar · Shift + Enter para nueva línea
               </span>
               {providerLabel && (
-                <span className="hidden truncate text-[10px] text-slate-500 sm:block">
+                <span className="hidden truncate text-[10px] text-slate-500 dark:text-slate-500 sm:block">
                   {providerLabel}
                 </span>
               )}
@@ -672,27 +693,27 @@ export function Chat() {
       </footer>
 
       {historyOpen && (
-        <section className="absolute inset-0 z-40 flex min-h-0 flex-col bg-slate-950">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+        <section className="absolute inset-0 z-40 flex min-h-0 flex-col bg-slate-50 dark:bg-slate-950">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 px-4 py-3">
             <div>
-              <h2 className="text-base font-extrabold text-white">
+              <h2 className="text-base font-extrabold text-slate-950 dark:text-white">
                 Historial de LITA
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 Conversaciones guardadas en tu cuenta de LTC
               </p>
             </div>
             <button
               type="button"
               onClick={() => setHistoryOpen(false)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-600 bg-slate-900 text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100"
               aria-label="Cerrar historial"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="flex shrink-0 gap-2 border-b border-slate-800 px-4 py-3">
+          <div className="flex shrink-0 gap-2 border-b border-slate-200 dark:border-slate-800 px-4 py-3">
             <button
               type="button"
               onClick={startNewChat}
@@ -705,12 +726,12 @@ export function Chat() {
 
           <div className="lita-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
             {historyThreads.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-700 bg-slate-900/50 px-4 py-8 text-center">
-                <History className="mx-auto h-5 w-5 text-slate-500" />
-                <p className="mt-2 text-sm font-bold text-slate-300">
+              <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-900/50 px-4 py-8 text-center">
+                <History className="mx-auto h-5 w-5 text-slate-500 dark:text-slate-500" />
+                <p className="mt-2 text-sm font-bold text-slate-700 dark:text-slate-300">
                   Todavía no hay conversaciones guardadas
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
                   El historial aparece después de tu primera respuesta de LITA.
                 </p>
               </div>
@@ -723,19 +744,19 @@ export function Chat() {
                       'flex items-stretch gap-2 rounded-2xl border p-2',
                       thread.id === activeChatId
                         ? 'border-violet-500/50 bg-violet-500/10'
-                        : 'border-slate-800 bg-slate-900/70',
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70',
                     ].join(' ')}
                   >
                     <button
                       type="button"
                       onClick={() => loadThread(thread)}
-                      className="min-w-0 flex-1 rounded-xl px-2 py-1.5 text-left transition hover:bg-slate-800/70"
+                      className="min-w-0 flex-1 rounded-xl px-2 py-1.5 text-left transition hover:bg-slate-200 dark:hover:bg-slate-800/70"
                     >
-                      <span className="block truncate text-sm font-bold text-slate-100">
+                      <span className="block truncate text-sm font-bold text-slate-900 dark:text-slate-100">
                         {thread.title}
                       </span>
-                      <span className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
-                        <span className="rounded-full border border-slate-700 px-1.5 py-0.5 uppercase tracking-wide text-slate-400">
+                      <span className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500 dark:text-slate-500">
+                        <span className="rounded-full border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 uppercase tracking-wide text-slate-600 dark:text-slate-400">
                           {thread.section === 'portfolio'
                             ? 'Portfolio'
                             : thread.section === 'transactions'
@@ -748,7 +769,7 @@ export function Chat() {
                     <button
                       type="button"
                       onClick={() => deleteThread(thread.id)}
-                      className="inline-flex w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
+                      className="inline-flex w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 dark:text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
                       aria-label={`Eliminar ${thread.title}`}
                     >
                       <Trash2 className="h-4 w-4" />

@@ -86,6 +86,10 @@ Rules:
 - Distinguish cash-flow or balance changes from investment gains.
 - Treat projections and simulations as scenarios, not guaranteed returns.
 - If the available context is insufficient, say exactly what is missing.
+- When asked which expense categories account for the most spending, prefer the exact figures in spendingByCategory.categories (currency ARS) supplied by LTC. Do not guess, re-sum partial transaction samples, combine currencies, or invent a number. The categories are already ranked by recorded total.
+- For expense questions, include each category's actual amount and ARS currency. Keep to the top 3 categories unless the user requests more.
+- If spendingByCategory is empty or unavailable, state that actual category totals could not be verified. A credit-card statement category describes a recorded card payment, not itemized purchases.
+- Never create Markdown tables with empty cells. Do not start a table unless you can fill all its cells with supported data. If there is no verified amount, write "Dato no disponible" in normal prose instead. Prefer a short bulleted ranking to a table for fewer than 4 categories.
 - Keep responses concise and practical.
 
 <financial-context>

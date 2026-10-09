@@ -338,6 +338,12 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
 export async function extractVisaStatement(bytes: Uint8Array, sha: string): Promise<StatementExtraction> {
   // Loaded only at request time; no browser PDF worker or canvas.
   const pdfjs = require('pdfjs-dist/legacy/build/pdf.js')
+  // Next.js/Vercel bundles the PDF.js runtime separately from its fake worker.
+  // Importing the matching legacy worker explicitly ensures it is included in
+  // the serverless bundle; PDF.js reuses this handler without network access.
+  // Verified against an actual Vercel Node.js 24 function using a synthetic PDF.
+  const workerModule = require('pdfjs-dist/legacy/build/pdf.worker.js')
+  ;(globalThis as typeof globalThis & { pdfjsWorker?: unknown }).pdfjsWorker = workerModule
   const loading = pdfjs.getDocument({ data: bytes, disableFontFace: true, useSystemFonts: false })
   const pdf = await loading.promise as PdfDocument
   try {

@@ -20,8 +20,14 @@ const decode = (value: string) => JSON.parse(Buffer.from(value, 'base64url').toS
  * Google's SecureToken signing keys rotate and are cached briefly.
  */
 export async function verifyLtcFirebaseToken(authorization: string | null): Promise<string> {
-  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
-  if (!projectId || !/^[a-z0-9-]{5,100}$/.test(projectId)) throw new Error('AUTH_NOT_CONFIGURED')
+  // Firebase Project IDs are public. Some Vercel variables were added with
+  // literal wrapping quotes (e.g. '"lleva-tus-cuentas"'); strip ONLY a
+  // matching surrounding pair. Keep a strict project-ID whitelist and verify
+  // JWT issuer/audience/signature against that exact ID.
+  const configured = (process.env.FIREBASE_PROJECT_ID ||
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '').trim()
+  const projectId = configured.replace(/^["']([a-z0-9-]{5,100})["']$/, '$1')
+  if (!/^[a-z0-9-]{5,100}$/.test(projectId)) throw new Error('AUTH_NOT_CONFIGURED')
   const found = /^Bearer ([A-Za-z0-9._-]+)$/.exec(authorization || '')
   if (!found || found[1].length > 10000) throw new Error('INVALID_SESSION')
   const parts = found[1].split('.')

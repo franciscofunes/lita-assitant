@@ -566,8 +566,8 @@ export function Chat() {
           ? String(history.error)
           : 'No pude consultar el período solicitado. Abrí LITA desde Transacciones e intentá de nuevo.'
         setInput('')
-        setMessages((previous) => [
-          ...previous,
+        setMessages([
+          ...messages,
           { id: createChatId(), role: 'user', content: question },
           { id: createChatId(), role: 'assistant', content: errorText },
         ])

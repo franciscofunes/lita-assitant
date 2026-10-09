@@ -32,3 +32,11 @@ Purchase details never count as independent LTC transactions. Taxes, previous pa
 ## QA
 Run: node --test tests/visa-statement-parser.test.mjs
 CI builds Next.js and synchronizes package-lock.json on this feature branch.
+
+
+## Banco Ciudad Visa Gold (newly supported)
+The 2-page digital Banco Ciudad Visa Gold format uses `CIERRE ACTUAL` and `VENCIMIENTO` with Spanish month names, `dd.mm.yy` transaction dates, and `Cuota nn/nn` for installment lines. The parser extracts itemized purchases, minimum payment, closing/due dates and ARS total.
+
+Crucially, its `DB IVA $ 21%` row lists **taxable fee base and VAT**: only the **last number is VAT**. `COM.ADM.Y LIQ.DE CUENTA` is a separate administration fee and is returned as the optional `statement.feesArs` field. The already-cleared previous statement/payment is not new spending. Both purchase subtotal and final ARS total must reconcile exactly. Nonzero Banco Ciudad USD purchases fail closed until column positions are validated with a matching source PDF.
+
+Sample fixture is synthetic and PII-free. The customer-provided PDF, account/card details and policy identifiers are never committed.

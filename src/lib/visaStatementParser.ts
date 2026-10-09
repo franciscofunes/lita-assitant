@@ -242,88 +242,87 @@ const santanderLayoutError = (reason: string): Error => {
  * the bank's own subtotals and final balances.
  */
 export function parseSantanderPositionedPurchases(positionedPages: Positioned[][]): CardLine[] {
-  const receiptPattern = /^\d{6}$/
-  const datePattern = /^\d{2}\/\d{2}\/\d{2}$/
-  const numericAmount = /^(-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})(?:\s*(?:pesos|d[oó]lares))?$/i
-  const items: CardLine[] = []
-  let lastDate = ''
+  // Santander's verified digital Visa template prints receipts near x=300,
+  // descriptions at x=104-290 and amounts at x=380-550 (595pt-wide page).
+  // PDF.js may split headings into arbitrary text items, so DO NOT require
+  // "Monto en pesos" / "Movimientos de" to be a single item.
+  const receiptPattern = /(?:^|\D)(\d{6})(?!\d)/
+  const datePattern = /\b\d{2}\/\d{2}\/\d{2}\b/
+  const moneyPattern = /-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}/
+  const purchases: CardLine[] = []
+  let activeDate = ''
 
-  // First page is the cover; movement tables occupy subsequent pages.
   for (let pageIndex = 1; pageIndex < Math.min(positionedPages.length, 6); pageIndex++) {
-    const page = positionedPages[pageIndex] || []
-    // Repeated Santander table headings anchor this adapter to its known
-    // format. This avoids interpreting account numbers in another layout.
-    const headings = page.filter((item) => /Monto en (?:pesos|d[oó]lares)/i.test(item.text))
-    const pesoHeading = headings.find((item) => /Monto en pesos/i.test(item.text))
-    const usdHeading = headings.find((item) => /Monto en d[oó]lares/i.test(item.text))
-    if (!pesoHeading || !usdHeading || pesoHeading.x >= usdHeading.x) continue
-    const amountSplitX = (pesoHeading.x + usdHeading.x) / 2
-    const firstReceiptX = page.find((item) => /Comprobante/i.test(item.text))?.x ?? 299
-
-    // Ignore balances and introductory rows before the movements table.
-    // Page 2 starts the detailed section lower down; later pages repeat
-    // only the table header at the top.
-    const startY = pageIndex === 1
-      ? page.find((item) => /Movimientos de\b/i.test(item.text))?.y
-      : undefined
-    if (pageIndex === 1 && startY === undefined) continue
-
-    const subtotalY = page.find((item) => /^Subtotal de\b/i.test(item.text))?.y
-    const receipts = page.filter((item) =>
-      Math.abs(item.x - firstReceiptX) <= 38 &&
-      receiptPattern.test(normalize(item.text)) &&
-      (startY === undefined || item.y < startY) &&
-      (subtotalY === undefined || item.y > subtotalY),
+    const spans = positionedPages[pageIndex] || []
+    const dates = spans
+      .filter((span) => span.x >= 30 && span.x <= 94 && datePattern.test(normalize(span.text)))
+      .sort((a, b) => b.y - a.y)
+    const receipts = spans.filter((span) =>
+      span.x >= 279 && span.x <= 347 &&
+      receiptPattern.test(normalize(span.text)) &&
+      // Never read subtotals/statement summary as a purchase.
+      // PDF.js coordinates run bottom-to-top.
+      !/Comprobante|Subtotal/i.test(span.text),
     ).sort((a, b) => b.y - a.y || a.x - b.x)
 
-    const dates = page.filter((item) =>
-      item.x < 90 && datePattern.test(normalize(item.text)),
-    ).sort((a, b) => a.y - b.y)
+    for (const receiptSpan of receipts) {
+      const receipt = receiptPattern.exec(normalize(receiptSpan.text))?.[1]
+      if (!receipt) continue
+      const matchDate = dates
+        .filter((span) => span.y >= receiptSpan.y - 10)
+        .sort((a, b) => a.y - b.y)[0]
+      if (matchDate) {
+        const foundDate = datePattern.exec(normalize(matchDate.text))?.[0]
+        if (foundDate) activeDate = iso(foundDate)
+      }
+      if (!activeDate) continue
 
-    for (const receipt of receipts) {
-      // PDF text y-axis runs bottom-to-top: a printed date above or on
-      // this row is the nearest date with y >= the receipt's baseline.
-      const priorDate = dates.find((item) => item.y >= receipt.y - 8)
-      if (priorDate) lastDate = iso(normalize(priorDate.text))
-      if (!lastDate) continue
-
-      const description = page.filter((item) =>
-        item.x >= 95 && item.x < receipt.x - 3 &&
-        Math.abs(item.y - receipt.y) <= 8 &&
-        normalize(item.text),
-      ).sort((a, b) => a.x - b.x).map((item) => item.text).join(' ')
+      const sameRow = spans.filter((span) => Math.abs(span.y - receiptSpan.y) <= 10)
+      const merchantParts = sameRow
+        .filter((span) => span.x >= 94 && span.x < receiptSpan.x - 4)
+        .sort((a, b) => a.x - b.x)
+        .map((span) => normalize(span.text))
+        .filter(Boolean)
+      const description = normalize(merchantParts.join(' '))
       const installment = /(\d{1,2}\s+de\s+\d{1,2})\s*$/i.exec(description)
-      const merchant = normalize(installment
-        ? description.slice(0, installment.index)
-        : description)
+      const merchant = normalize(installment ? description.slice(0, installment.index) : description)
       if (!merchant || merchant.length > 90) continue
 
-      const amounts = page.filter((item) =>
-        item.x >= pesoHeading.x &&
-        Math.abs(item.y - receipt.y) <= 8 &&
-        numericAmount.test(normalize(item.text)),
+      // Detect a bank amount from its physical column, not from free text.
+      // Each row must contain exactly ONE numeric cell across both columns.
+      const values = sameRow.filter((span) =>
+        span.x >= 365 && span.x < 575 && moneyPattern.test(normalize(span.text)),
       )
-      // Ambiguous currency / multiple amount cells must fail closed.
-      if (amounts.length !== 1) continue
-      const amountItem = amounts[0]
-      const amountMatch = numericAmount.exec(normalize(amountItem.text))
-      if (!amountMatch) continue
-      const value = cents(decimal(amountMatch[1]))
-      const currency: 'ARS' | 'USD' = amountItem.x < amountSplitX ? 'ARS' : 'USD'
-      // Reject contradictory textual currency labels if they are present.
-      if (/pesos/i.test(amountItem.text) && currency !== 'ARS') continue
-      if (/d[oó]lares/i.test(amountItem.text) && currency !== 'USD') continue
+      if (values.length !== 1) continue
+      const money = moneyPattern.exec(normalize(values[0].text))
+      if (!money) continue
+      const amountCents = cents(decimal(money[0]))
+      const currency: 'ARS' | 'USD' = values[0].x < 462 ? 'ARS' : 'USD'
+      if (/pesos/i.test(values[0].text) && currency !== 'ARS') continue
+      if (/d[oó]lares/i.test(values[0].text) && currency !== 'USD') continue
 
-      items.push({
-        date: lastDate, merchant, currency, amount: fixed(value),
-        receipt: normalize(receipt.text),
-        installment: installment ? normalize(installment[1]) : null,
-        sourcePage: pageIndex + 1,
-        type: 'purchase', includeInCashFlow: false,
+      purchases.push({
+        date: activeDate, merchant, currency, amount: fixed(amountCents),
+        receipt, installment: installment ? normalize(installment[1]) : null,
+        sourcePage: pageIndex + 1, type: 'purchase', includeInCashFlow: false,
       })
     }
   }
-  return items
+  return purchases
+}
+
+export function santanderPositionedCounts(positionedPages: Positioned[][]) {
+  // PII-safe diagnostics only. No PDF content, names, identifiers or amounts.
+  return positionedPages.slice(1, 6).map((spans) => ({
+    spans: spans.length,
+    receiptCandidates: spans.filter((x) =>
+      x.x >= 279 && x.x <= 347 && /(?:^|\D)\d{6}(?!\d)/.test(normalize(x.text))).length,
+    dateCandidates: spans.filter((x) =>
+      x.x >= 30 && x.x <= 94 && /\b\d{2}\/\d{2}\/\d{2}\b/.test(normalize(x.text))).length,
+    amountCandidates: spans.filter((x) =>
+      x.x >= 365 && x.x < 575 &&
+      /-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}/.test(normalize(x.text))).length,
+  }))
 }
 
 /**

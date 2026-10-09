@@ -178,3 +178,38 @@ test('Santander geometry carries forward purchase date and rejects ambiguous amo
   noDate[1].push({ text: '1,00 pesos', x: 400, y: 545 })
   assert.equal(parseSantanderPositionedPurchases(noDate).length, 1)
 })
+
+
+test('Santander accepts receipts from fixed columns even if PDF.js splits or omits headings', () => {
+  // PDF.js commonly segments "Monto en pesos" into "Monto en" / "pesos".
+  const noWholeHeading = positioned.map((rows) => rows.map((span) => ({ ...span })))
+  noWholeHeading[1] = noWholeHeading[1]
+    .filter((span) => !/Monto en|Movimientos de|Comprobante/.test(span.text))
+  assert.equal(parseSantanderPositionedPurchases(noWholeHeading).length, 2)
+  const statement = parseVisaTextPages(pages, '2'.repeat(64), noWholeHeading)
+  assert.deepEqual(statement.statement.purchases, { ARS: '100.00', USD: '20.00' })
+  assert.equal(statement.items.length, 2)
+})
+
+test('Santander recognizes an entire multi-page 83-purchase positioned fixture with missing dates', () => {
+  const all = Array.from({ length: 8 }, () => [])
+  for (let i = 0; i < 83; i++) {
+    const page = 1 + Math.floor(i / 18)
+    const inPage = i % 18
+    const y = page === 1 ? 510 - inPage * 24 : 740 - inPage * 24
+    const usd = i >= 81
+    const amount = usd ? '1,00 dólares' : '1,00 pesos'
+    const x = usd ? 503 : 410
+    if (inPage === 0) all[page].push({ text: '01/09/26', x: 45, y })
+    all[page].push(
+      { text: 'Comercio sintético', x: 104, y },
+      { text: String(100000 + i), x: 299.5, y },
+      { text: amount, x, y },
+    )
+  }
+  const purchases = parseSantanderPositionedPurchases(all)
+  assert.equal(purchases.length, 83)
+  assert.equal(purchases.filter((row) => row.currency === 'ARS').length, 81)
+  assert.equal(purchases.filter((row) => row.currency === 'USD').length, 2)
+  assert.ok(purchases.every((row) => row.includeInCashFlow === false))
+})

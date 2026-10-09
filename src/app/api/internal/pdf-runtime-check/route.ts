@@ -29,6 +29,8 @@ export async function GET() {
   let stage = 'import'
   try {
     const pdfjs = require('pdfjs-dist/legacy/build/pdf.js')
+    const workerModule = require('pdfjs-dist/legacy/build/pdf.worker.js')
+    ;(globalThis as typeof globalThis & {pdfjsWorker?: unknown}).pdfjsWorker = workerModule
     stage = 'getDocument'
     const loading = pdfjs.getDocument({data: syntheticPdf(), disableFontFace: true})
     const doc = await loading.promise

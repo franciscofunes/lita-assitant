@@ -14,13 +14,13 @@ const edgeStoreRouter = es.router({
     .accessControl({ userId: { path: 'author' } }),
 })
 
-const backendClient = initEdgeStoreClient({ router: edgeStoreRouter })
+const getBackendClient = () => initEdgeStoreClient({ router: edgeStoreRouter })
 
 export async function storeTemporaryStatement(bytes: Uint8Array, uid: string) {
   if (!process.env.EDGE_STORE_ACCESS_KEY || !process.env.EDGE_STORE_SECRET_KEY) {
     throw new Error('EDGE_STORE_NOT_CONFIGURED')
   }
-  const uploaded = await backendClient.statementPdfs.upload({
+  const uploaded = await getBackendClient().statementPdfs.upload({
     content: { blob: new Blob([Buffer.from(bytes)], { type: 'application/pdf' }), extension: 'pdf' },
     options: { temporary: true },
     ctx: { userId: uid },
@@ -30,5 +30,5 @@ export async function storeTemporaryStatement(bytes: Uint8Array, uid: string) {
 
 export async function deleteTemporaryStatement(url: string) {
   // No client can request deletion of an arbitrary URL.
-  await backendClient.statementPdfs.deleteFile({ url })
+  await getBackendClient().statementPdfs.deleteFile({ url })
 }

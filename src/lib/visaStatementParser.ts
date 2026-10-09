@@ -46,7 +46,7 @@ const iso = (date: string): string => {
   if (verified.getUTCDate() !== day || verified.getUTCMonth() + 1 !== month) return ''
   return [year, String(month).padStart(2, '0'), String(day).padStart(2, '0')].join('-')
 }
-const extractMoney = (raw: string) => {
+const extractMoney = (raw: string): { cents: number; currency: 'ARS' | 'USD' } | null => {
   const found = money.exec(raw)
   return found ? { cents: cents(decimal(found[1])), currency: /pesos/i.test(found[2]) ? 'ARS' : 'USD' } : null
 }

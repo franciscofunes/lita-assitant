@@ -1,3 +1,4 @@
+import { parseBancoCiudadVisaTextPages } from './bancoCiudadVisaParser'
 export type CardLine = {
   date: string
   merchant: string
@@ -23,6 +24,7 @@ export type StatementExtraction = {
     minimumPaymentArs: string
     previousCreditArs: string
     taxesArs: string
+    feesArs?: string
     reconciliation: { ARS: boolean; USD: boolean }
   }
   items: CardLine[]
@@ -69,6 +71,10 @@ export const sortPdfTextLines = (items: Positioned[]) => {
  * Individual purchase values always remain excluded from LTC cash-flow totals.
  */
 export function parseVisaTextPages(pages: string[][], fileSha256: string): StatementExtraction {
+  if (pages[0]?.some((line) => /\bVISA GOLD\b/i.test(line)) &&
+      pages[0]?.some((line) => /CIERRE ACTUAL:/i.test(line))) {
+    return parseBancoCiudadVisaTextPages(pages, fileSha256)
+  }
   if (pages.length < 2 || !pages[0].some((line) => /Resumen Visa/i.test(line))) {
     throw new Error('UNSUPPORTED_PDF_LAYOUT')
   }

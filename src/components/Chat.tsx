@@ -19,6 +19,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Streamdown } from 'streamdown'
+import { requestedFinancialPeriod } from '@/lib/financialPeriods'
+import { assessFinancialScope } from '@/lib/financialScope'
 
 type SpendingCategory = {
   category: string
@@ -265,6 +267,8 @@ export function Chat() {
   const [visibleHeight, setVisibleHeight] = useState<number | null>(null)
   const parentOriginRef = useRef<string | null>(null)
   const lastSavedSignatureRef = useRef('')
+  const pendingHistoricalRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
+  const [readingHistory, setReadingHistory] = useState(false)
 
   const allowedParentOrigins = useMemo(
     () => new Set([...defaultParentOrigins, ...configuredParentOrigins()]),
@@ -276,6 +280,7 @@ export function Chat() {
     input,
     handleInputChange,
     handleSubmit,
+    append,
     isLoading,
     error,
     setInput,
@@ -331,6 +336,18 @@ export function Chat() {
         typeof event.data.payload === 'object'
       ) {
         setFinancialContext(event.data.payload)
+        return
+      }
+
+      if (event.data?.type === 'lita:historical:result') {
+        const reply = event.data.payload
+        const resolve = pendingHistoricalRef.current.get(reply?.requestId)
+        if (resolve) {
+          pendingHistoricalRef.current.delete(reply.requestId)
+          resolve(reply.success === true && reply.result && typeof reply.result === 'object'
+            ? reply.result as Record<string, unknown>
+            : { error: String(reply.reason || 'No se pudieron consultar los movimientos.'), complete: false })
+        }
         return
       }
 
@@ -506,6 +523,68 @@ export function Chat() {
     setSaveStatus('idle')
     setSaveError('')
     setSaveAttempt((attempt) => attempt + 1)
+  }
+
+  const requestHistorical = async (from: string, to: string): Promise<Record<string, unknown> | null> => {
+    const origin = parentOriginRef.current
+    if (!origin || window.parent === window) return null
+    const requestId = [Date.now().toString(36), Math.random().toString(36).slice(2, 10)].join('-')
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        pendingHistoricalRef.current.delete(requestId)
+        resolve(null)
+      }, 10000)
+      pendingHistoricalRef.current.set(requestId, (value) => {
+        window.clearTimeout(timer)
+        resolve(value)
+      })
+      window.parent.postMessage({
+        type: 'lita:historical:request', payload: { requestId, from, to },
+      }, origin)
+    })
+  }
+
+  const submitFinancialMessage = async (event: React.FormEvent<HTMLFormElement>) => {
+    const question = input.trim()
+    if (!question || isLoading || readingHistory) {
+      event.preventDefault()
+      return
+    }
+    const period = financialContext?.section === 'transactions' &&
+      assessFinancialScope(question) === 'allowed'
+      ? requestedFinancialPeriod(question) : null
+    if (!period) {
+      handleSubmit(event)
+      return
+    }
+    event.preventDefault()
+    setReadingHistory(true)
+    try {
+      const history = await requestHistorical(period.from, period.to)
+      if (!history || history.complete !== true) {
+        const errorText = history?.error
+          ? String(history.error)
+          : 'No pude consultar el período solicitado. Abrí LITA desde Transacciones e intentá de nuevo.'
+        setInput('')
+        setMessages((previous) => [
+          ...previous,
+          { id: createChatId(), role: 'user', content: question },
+          { id: createChatId(), role: 'assistant', content: errorText },
+        ])
+        return
+      }
+      const context = {
+        section: 'transactions',
+        scope: 'historical-query',
+        historicalAnalysis: history,
+      }
+      // Per-request body ensures no stale React state races between iframe
+      // reply and model call. Do not send the unrelated current-view 50 rows.
+      setInput('')
+      await append({ role: 'user', content: question }, { body: { context } })
+    } finally {
+      setReadingHistory(false)
+    }
   }
 
   const refreshHistory = () => {
@@ -870,7 +949,7 @@ export function Chat() {
         )}
         <form
           className="mx-auto flex w-full max-w-2xl items-end gap-2"
-          onSubmit={handleSubmit}
+          onSubmit={submitFinancialMessage}
         >
           <div className="min-w-0 flex-1 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 transition focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/20">
             <textarea
@@ -885,7 +964,7 @@ export function Chat() {
                   event.currentTarget.form?.requestSubmit()
                 }
               }}
-              disabled={isLoading || providerStatus?.ready === false}
+              disabled={isLoading || readingHistory || providerStatus?.ready === false}
               placeholder={
                 providerStatus?.ready === false
                   ? 'Esperando un proveedor de IA…'
@@ -909,6 +988,7 @@ export function Chat() {
             type="submit"
             disabled={
               isLoading ||
+              readingHistory ||
               !input.trim() ||
               providerStatus?.ready === false
             }

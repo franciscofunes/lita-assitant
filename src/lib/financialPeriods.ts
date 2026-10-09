@@ -20,12 +20,14 @@ export const requestedFinancialPeriod = (
   let year = yearMatch ? Number(yearMatch[1]) : today.getFullYear()
   const foundMonth = monthNames.findIndex((month) => new RegExp('\\b' + (month === 'septiembre' ? '(?:septiembre|setiembre)' : month) + '\\b').test(clean))
   if (yearMatch && foundMonth >= 0) {
-    const lastDay = new Date(year, foundMonth + 1, 0).getDate()
+    const lastDay = year === today.getFullYear() && foundMonth === today.getMonth()
+      ? today.getDate() : new Date(year, foundMonth + 1, 0).getDate()
     return { from: isoDay(year, foundMonth + 1, 1), to: isoDay(year, foundMonth + 1, lastDay),
       label: monthNames[foundMonth] + ' ' + year }
   }
   if (foundMonth >= 0) {
-    const lastDay = new Date(year, foundMonth + 1, 0).getDate()
+    const lastDay = year === today.getFullYear() && foundMonth === today.getMonth()
+      ? today.getDate() : new Date(year, foundMonth + 1, 0).getDate()
     return { from: isoDay(year, foundMonth + 1, 1), to: isoDay(year, foundMonth + 1, lastDay),
       label: monthNames[foundMonth] + ' ' + year }
   }

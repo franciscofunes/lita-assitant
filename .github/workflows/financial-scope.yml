@@ -1,0 +1,24 @@
+name: Financial scope guard
+on:
+  pull_request:
+    paths:
+      - 'src/lib/financialScope.ts'
+      - 'src/lib/financialPeriods.ts'
+      - 'tests/finance-scope.test.mjs'
+      - '.github/workflows/financial-scope.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/financialScope.ts'
+      - 'src/lib/financialPeriods.ts'
+      - 'tests/finance-scope.test.mjs'
+jobs:
+  scope-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Run domain and history date tests
+        run: node --test tests/finance-scope.test.mjs

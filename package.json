@@ -35,6 +35,8 @@
     "tailwindcss-animate": "^1.0.6",
     "typescript": "5.1.6",
     "@vercel/oidc": "3.8.7",
-    "streamdown": "^2.7.0"
+    "streamdown": "^2.7.0",
+    "@edgestore/server": "^0.8.0",
+    "pdfjs-dist": "^3.11.174"
   }
 }

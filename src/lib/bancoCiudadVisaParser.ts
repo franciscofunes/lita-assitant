@@ -66,7 +66,7 @@ export function parseBancoCiudadVisaTextPages(pages: string[][], fileSha256: str
       if (decimalCents(balance[2]) !== 0) throw new Error('UNSUPPORTED_PDF_LAYOUT')
       continue
     }
-    const paid = /\bSU PAGO EN PESOS\s+([\d.]+,\d{2})-\b?/i.exec(line)
+    const paid = /\bSU PAGO EN PESOS\s+([\d.]+,\d{2})-/i.exec(line)
     if (paid) {
       payment = -decimalCents(paid[1])
       continue

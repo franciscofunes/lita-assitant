@@ -284,9 +284,11 @@ export async function POST(req: Request) {
   }
 
   const systemMessage = contextSystemMessage(body.context)
+  // Only the current question is given to the provider. Previous chat turns
+  // remain visible to the user but cannot smuggle off-domain instructions.
   const requestMessages = systemMessage
-    ? [systemMessage, ...messages]
-    : messages
+    ? [systemMessage, mostRecent!]
+    : [mostRecent!]
 
   const providers = getProviderAttemptOrder()
   if (!providers.length) {

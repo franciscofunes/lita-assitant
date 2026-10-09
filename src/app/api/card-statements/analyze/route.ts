@@ -28,7 +28,7 @@ const cors = (origin: string) => ({
 const errors: Record<string, [number, string]> = {
   INVALID_SESSION: [401, 'Tu sesión venció. Volvé a iniciar sesión.'],
   EXPIRED_SESSION: [401, 'Tu sesión venció. Volvé a iniciar sesión.'],
-  AUTH_NOT_CONFIGURED: [503, 'La verificación segura de Firebase todavía no está configurada.'],
+  AUTH_NOT_CONFIGURED: [503, 'No se pudo validar tu sesión: falta configurar el ID de proyecto Firebase en Lita. No necesitás un plan pago.'],
   AUTH_KEY_UNAVAILABLE: [503, 'No se pudo verificar tu sesión. Intentá nuevamente.'],
   EDGE_STORE_NOT_CONFIGURED: [503, 'La carga temporal de PDFs todavía no está configurada.'],
   UNSUPPORTED_PDF_LAYOUT: [422, 'Este diseño de resumen todavía no está soportado. No se guardó ningún dato.'],
@@ -68,7 +68,9 @@ export async function POST(request: NextRequest) {
     const form = await request.formData()
     const file = form.get('pdf')
     if (!(file instanceof File) || file.size === 0 || file.size > MAX_PDF_BYTES ||
-        file.type !== 'application/pdf') {
+        !['application/pdf', 'application/octet-stream', ''].includes(file.type)) {
+      // Mobile browsers/file providers can omit MIME or use octet-stream.
+      // The PDF signature is always checked below before parsing.
       return reply({ error: 'Seleccioná un PDF válido de hasta 4 MB.' }, 400, origin)
     }
     binary = new Uint8Array(await file.arrayBuffer())
@@ -76,8 +78,12 @@ export async function POST(request: NextRequest) {
       return reply({ error: 'El archivo no contiene un PDF válido.' }, 422, origin)
     }
     const sha256 = digestPdf(binary)
-    // Storage lasts only during analysis, then is explicitly deleted.
-    fileUrl = await storeTemporaryStatement(binary, uid)
+    // Edge Store is optional: a signed-in user can analyze entirely in
+    // volatile server memory on free deployments without storage credentials.
+    // When configured, keep the established per-user temporary upload/delete path.
+    if (process.env.EDGE_STORE_ACCESS_KEY && process.env.EDGE_STORE_SECRET_KEY) {
+      fileUrl = await storeTemporaryStatement(binary, uid)
+    }
     const result = await extractVisaStatement(binary, sha256)
     output = { result }
   } catch (error) {

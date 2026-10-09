@@ -73,7 +73,7 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
     throw new Error('UNSUPPORTED_PDF_LAYOUT')
   }
   const firstPage = pages[0].join(' ')
-  const allDates = [...firstPage.matchAll(/\b\d{2}\/\d{2}\/\d{2}\b/g)].map((match) => match[0])
+  const allDates = firstPage.match(/\b\d{2}\/\d{2}\/\d{2}\b/g) || []
   if (allDates.length < 6) throw new Error('UNSUPPORTED_PDF_LAYOUT')
   const close = iso(allDates[2]); const due = iso(allDates[3])
   const fullText = pages.flat().join(' ')

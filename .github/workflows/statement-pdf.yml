@@ -1,0 +1,44 @@
+name: Statement PDF checks
+on:
+  push:
+    branches:
+      - feat/statement-pdf-secure-analyzer
+  pull_request:
+    paths:
+      - 'src/app/api/card-statements/**'
+      - 'src/lib/statementAuth.ts'
+      - 'src/lib/statementTemporaryStorage.ts'
+      - 'src/lib/visaStatementParser.ts'
+      - 'tests/visa-statement-parser.test.mjs'
+      - 'package*.json'
+      - '.github/workflows/statement-pdf.yml'
+permissions:
+  contents: write
+jobs:
+  test-and-lock:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Synchronize npm lockfile for new PDF dependencies
+        if: github.event_name == 'push'
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          git add package-lock.json
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore(lockfile): lock secure PDF analyzer dependencies"
+            git push
+          fi
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test synthetic bank statement parser
+        run: node --test tests/visa-statement-parser.test.mjs
+      - name: Compile LITA
+        run: npm run build

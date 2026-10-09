@@ -491,6 +491,13 @@ export async function extractVisaStatement(bytes: Uint8Array, sha: string): Prom
       }
       // If any grouping yields purchases that disagree with the bank,
       // report reconciliation failure rather than an unsupported layout.
+      // Only numeric field counts leave the process: banking data never do.
+      if (firstError instanceof Error && firstError.name === 'SANTANDER_MOVEMENT_ROWS_NOT_FOUND') {
+        console.error('[card-statement-pdf] Santander positioned row metrics', {
+          pages: santanderPositionedCounts(positions),
+          parsedRows: parseSantanderPositionedPurchases(positions).length,
+        })
+      }
       throw mismatch || firstError
     }
   } finally {

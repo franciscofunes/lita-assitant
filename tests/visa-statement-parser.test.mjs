@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseVisaTextPages } from '../src/lib/visaStatementParser.ts'
+import { parseVisaTextPages, sortPdfTextLines } from '../src/lib/visaStatementParser.ts'
 
 const pages = [
   ['Resumen Visa', 'Total a pagar', 'Cierre anterior Vencimiento anterior Cierre actual Vencimiento actual Próximo cierre Próximo vencimiento',
@@ -103,4 +103,32 @@ test('Santander Visa synthetic parser stays compatible after bank dispatch', () 
   const extracted = parseVisaTextPages(pages, '1'.repeat(64))
   assert.equal(extracted.statement.institution, 'Santander')
   assert.equal(extracted.items.length, 2)
+})
+
+
+// PDF.js may assign distinct font baselines within a single printed row.
+// Test only synthetic records: never check in actual bank PDF text or PII.
+test('Santander VISA parses horizontally aligned fragments with near baselines', () => {
+  const spans = [
+    { text: 'Movimientos de usuario', x: 8, y: 150 },
+    { text: 'Fecha Descripción Cuota Comprobante Monto en pesos Monto en dólares', x: 8, y: 136 },
+    { text: '01/09/26', x: 8, y: 120 },
+    { text: 'Supermercado', x: 70, y: 118 },
+    { text: '111111', x: 220, y: 116.8 },
+    { text: '100,00 pesos', x: 300, y: 116.8 },
+    { text: '02/09/26', x: 8, y: 102 },
+    { text: 'Suscripción', x: 70, y: 100 },
+    { text: '222222', x: 220, y: 98.8 },
+    { text: '20,00 dólares', x: 300, y: 98.8 },
+  ]
+  const strict = sortPdfTextLines(spans)
+  assert.throws(() => parseVisaTextPages([pages[0], strict, ...pages.slice(2)], 'b'.repeat(64)), /UNSUPPORTED_PDF_LAYOUT/)
+  const resilient = sortPdfTextLines(spans, 4.5)
+  const result = parseVisaTextPages([pages[0], [pages[1][1], ...resilient], ...pages.slice(2)], 'c'.repeat(64))
+  assert.equal(result.items.length, 2)
+  assert.deepEqual(result.statement.purchases, { ARS: '100.00', USD: '20.00' })
+  assert.equal(result.statement.reconciliation.ARS, true)
+  assert.ok(result.items.every((item) => item.includeInCashFlow === false))
+  const altered = resilient.map((line) => line.replace('100,00 pesos', '101,00 pesos'))
+  assert.throws(() => parseVisaTextPages([pages[0], [pages[1][1], ...altered], ...pages.slice(2)], 'd'.repeat(64)), /STATEMENT_RECONCILIATION_FAILED/)
 })

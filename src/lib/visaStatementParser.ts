@@ -72,7 +72,7 @@ const decimalCents = (value: string): number => {
   return Math.round(Number(normalized) * 100)
 }
 const amount = (cents: number) => (cents / 100).toFixed(2)
-const normalize = (raw: string) => raw.replace(/\s+/g, ' ').trim()
+const cityNormalize = (raw: string) => raw.replace(/\s+/g, ' ').trim()
 const months: Record<string, number> = {
   ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6,
   jul: 7, ago: 8, sep: 9, oct: 10, nov: 11, dic: 12,
@@ -146,7 +146,7 @@ function parseBancoCiudadVisaTextPages(pages: string[][], fileSha256: string): S
     const installment = /\bCuota\s+(\d{1,2})\/(\d{1,2})\b/i.exec(purchase[5])
     // Policy numbers and other embedded identifiers aren't necessary for
     // spending categories. Never return them to LTC/Firestore.
-    const merchant = normalize(
+    const merchant = cityNormalize(
       purchase[5].replace(/\bCuota\s+\d{1,2}\/\d{1,2}\b/ig, '')
         .replace(/(?:\d{7,}[-\d]*)/g, '').replace(/[0-9-]{5,}$/g, ''),
     )

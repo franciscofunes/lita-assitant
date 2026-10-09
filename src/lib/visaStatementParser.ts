@@ -76,7 +76,6 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
   const allDates = [...firstPage.matchAll(/\b\d{2}\/\d{2}\/\d{2}\b/g)].map((match) => match[0])
   if (allDates.length < 6) throw new Error('UNSUPPORTED_PDF_LAYOUT')
   const close = iso(allDates[2]); const due = iso(allDates[3])
-  const title = pages[0].find((line) => /Total a pagar/i.test(line))
   const fullText = pages.flat().join(' ')
   // Header totals are intentionally checked against the closing summary.
   const totalsLine = pages[pages.length > 5 ? 5 : pages.length - 1]
@@ -128,7 +127,7 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
   if (!parsed.length || parsed.length > 400) throw new Error('UNSUPPORTED_PDF_LAYOUT')
   const subtotal = { ARS: 0, USD: 0 }
   for (const item of parsed) subtotal[item.currency] += cents(Number(item.amount))
-  const purchaseTotalMatch = /Total consumido\s+([\d.]+,\d{2})\s+pesos[,\s]+([\d.]+,\d{2})\s+d[oó]lares/i.exec(fullText)
+  const purchaseTotalMatch = /Subtotal de[^\n]*?Subtotal en pesos\D*([\d.]+,\d{2})\.?\s*Subtotal en d[oó]lares\D*([\d.]+,\d{2})/i.exec(pages.flat().find((line) => /Subtotal de/i.test(line)) || '')
   // Use the bank's published purchase subtotal as the independent check.
   const expectedArs = purchaseTotalMatch ? cents(decimal(purchaseTotalMatch[1])) : NaN
   const expectedUsd = purchaseTotalMatch ? cents(decimal(purchaseTotalMatch[2])) : NaN

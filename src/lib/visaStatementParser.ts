@@ -225,10 +225,10 @@ function parseBancoCiudadVisaTextPages(pages: string[][], fileSha256: string): S
 
 
 // These are fixed diagnostic labels only: never log PDF text or banking data.
-const santanderLayoutError = (reason: string): never => {
+const santanderLayoutError = (reason: string): Error => {
   const error = new Error('UNSUPPORTED_PDF_LAYOUT')
   error.name = 'SANTANDER_' + reason
-  throw error
+  return error
 }
 
 /**
@@ -242,11 +242,11 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
     return parseBancoCiudadVisaTextPages(pages, fileSha256)
   }
   if (pages.length < 2 || !pages[0].some((line) => /Resumen\s+Visa/i.test(line))) {
-    santanderLayoutError('HEADER_NOT_FOUND')
+    throw santanderLayoutError('HEADER_NOT_FOUND')
   }
   const firstPage = pages[0].join(' ')
   const allDates = firstPage.match(/\b\d{2}\/\d{2}\/\d{2}\b/g) || []
-  if (allDates.length < 6) santanderLayoutError('BILLING_DATES_NOT_FOUND')
+  if (allDates.length < 6) throw santanderLayoutError('BILLING_DATES_NOT_FOUND')
   const close = iso(allDates[2]); const due = iso(allDates[3])
   const fullText = pages.flat().join(' ')
   // Header totals are intentionally checked against the closing summary.
@@ -258,7 +258,7 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
   const totalUsd = totalsLine
     ? /Total en d[oó]lares\D*([\d.]+,\d{2})/i.exec(totalsLine)?.[1]
     : /U\$S\s*([\d.]+,\d{2})/i.exec(firstPage)?.[1]
-  if (!totalArs || !totalUsd || !close || !due) santanderLayoutError('AMOUNTS_OR_DATES_NOT_FOUND')
+  if (!totalArs || !totalUsd || !close || !due) throw santanderLayoutError('AMOUNTS_OR_DATES_NOT_FOUND')
 
   const parsed: CardLine[] = []
   let lastDate = ''
@@ -296,7 +296,7 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
       })
     }
   }
-  if (!parsed.length || parsed.length > 400) santanderLayoutError('MOVEMENT_ROWS_NOT_FOUND')
+  if (!parsed.length || parsed.length > 400) throw santanderLayoutError('MOVEMENT_ROWS_NOT_FOUND')
   const subtotal = { ARS: 0, USD: 0 }
   for (const item of parsed) subtotal[item.currency] += cents(Number(item.amount))
   const purchaseTotalMatch = /Subtotal de[^\n]*?Subtotal en pesos\D*([\d.]+,\d{2})\.?\s*Subtotal en d[oó]lares\D*([\d.]+,\d{2})/i.exec(pages.flat().find((line) => /Subtotal de/i.test(line)) || '')

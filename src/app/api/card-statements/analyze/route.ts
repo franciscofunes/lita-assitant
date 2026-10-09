@@ -62,9 +62,13 @@ export async function POST(request: NextRequest) {
   let binary: Uint8Array | null = null
   let output: object | null = null
   let status = 200
+  // Record only the processing stage and a fixed error code: never log PDF
+  // contents, account numbers, filenames, tokens, or authenticated user IDs.
+  let stage = 'authentication'
   try {
     const uid = await verifyLtcFirebaseToken(request.headers.get('authorization'))
     if (rateLimited(uid)) return reply({ error: 'Demasiadas solicitudes. Esperá un minuto.' }, 429, origin)
+    stage = 'upload-validation'
     const form = await request.formData()
     const file = form.get('pdf')
     if (!(file instanceof File) || file.size === 0 || file.size > MAX_PDF_BYTES ||
@@ -78,17 +82,25 @@ export async function POST(request: NextRequest) {
       return reply({ error: 'El archivo no contiene un PDF válido.' }, 422, origin)
     }
     const sha256 = digestPdf(binary)
-    // Edge Store is optional: a signed-in user can analyze entirely in
-    // volatile server memory on free deployments without storage credentials.
-    // When configured, keep the established per-user temporary upload/delete path.
-    if (process.env.EDGE_STORE_ACCESS_KEY && process.env.EDGE_STORE_SECRET_KEY) {
+    // Default to transient in-memory analysis: uploading sensitive bank PDFs
+    // to a third party must never be a prerequisite for reading their data.
+    // Opt in to Edge Store only after its upload and cleanup are verified.
+    if (process.env.STATEMENT_PDF_EDGE_STORE_ENABLED === 'true') {
+      stage = 'optional-temporary-storage'
       fileUrl = await storeTemporaryStatement(binary, uid)
     }
+    stage = 'pdf-extraction'
     const result = await extractVisaStatement(binary, sha256)
     output = { result }
   } catch (error) {
     const code = error instanceof Error ? error.message : ''
+    const knownError = Object.prototype.hasOwnProperty.call(errors, code)
     const [httpStatus, message] = errors[code] || [500, 'No pudimos analizar este resumen de forma segura.']
+    // Fixed diagnostic labels avoid leaking exception text or banking data.
+    console.error('[card-statement-pdf] Analysis failed', {
+      stage, code: knownError ? code : 'UNEXPECTED_FAILURE',
+      errorType: error instanceof Error ? error.name : 'Unknown',
+    })
     status = httpStatus
     output = { error: message }
   } finally {
@@ -97,6 +109,7 @@ export async function POST(request: NextRequest) {
     if (fileUrl) {
       try { await deleteTemporaryStatement(fileUrl) }
       catch {
+        console.error('[card-statement-pdf] Temporary-file cleanup failed', { stage: 'cleanup' })
         status = 503
         output = { error: 'No se pudo confirmar la eliminación temporal del PDF. Reintentá más tarde.' }
       }

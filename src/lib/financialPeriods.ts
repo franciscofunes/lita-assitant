@@ -18,7 +18,7 @@ export const requestedFinancialPeriod = (
   const clean = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   const yearMatch = clean.match(/\b(20\d{2})\b/)
   let year = yearMatch ? Number(yearMatch[1]) : today.getFullYear()
-  const foundMonth = monthNames.findIndex((month) => new RegExp('\\b' + month + '\\b').test(clean))
+  const foundMonth = monthNames.findIndex((month) => new RegExp('\\b' + (month === 'septiembre' ? '(?:septiembre|setiembre)' : month) + '\\b').test(clean))
   if (yearMatch && foundMonth >= 0) {
     const lastDay = new Date(year, foundMonth + 1, 0).getDate()
     return { from: isoDay(year, foundMonth + 1, 1), to: isoDay(year, foundMonth + 1, lastDay),

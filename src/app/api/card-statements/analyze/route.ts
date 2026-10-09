@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyLtcFirebaseToken, digestPdf } from '@/lib/statementAuth'
 import { extractVisaStatement } from '@/lib/visaStatementParser'
-import { storeTemporaryStatement, deleteTemporaryStatement } from '@/lib/statementTemporaryStorage'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -87,6 +86,7 @@ export async function POST(request: NextRequest) {
     // Opt in to Edge Store only after its upload and cleanup are verified.
     if (process.env.STATEMENT_PDF_EDGE_STORE_ENABLED === 'true') {
       stage = 'optional-temporary-storage'
+      const { storeTemporaryStatement } = await import('@/lib/statementTemporaryStorage')
       fileUrl = await storeTemporaryStatement(binary, uid)
     }
     stage = 'pdf-extraction'
@@ -107,7 +107,10 @@ export async function POST(request: NextRequest) {
     // If deletion fails, the object is still temporary and expires in 24h,
     // but the endpoint fails closed rather than reporting a successful cleanup.
     if (fileUrl) {
-      try { await deleteTemporaryStatement(fileUrl) }
+      try {
+        const { deleteTemporaryStatement } = await import('@/lib/statementTemporaryStorage')
+        await deleteTemporaryStatement(fileUrl)
+      }
       catch {
         console.error('[card-statement-pdf] Temporary-file cleanup failed', { stage: 'cleanup' })
         status = 503

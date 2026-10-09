@@ -10,6 +10,7 @@ on:
       - 'src/lib/statementTemporaryStorage.ts'
       - 'src/lib/visaStatementParser.ts'
       - 'tests/visa-statement-parser.test.mjs'
+      - 'tests/pdfjs-worker-smoke.test.cjs'
       - 'package*.json'
       - '.github/workflows/statement-pdf.yml'
 permissions:
@@ -38,7 +39,7 @@ jobs:
           fi
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Test synthetic bank statement parser
-        run: node --test tests/visa-statement-parser.test.mjs
+      - name: Test synthetic bank statements and real PDF.js worker loading
+        run: node --test tests/visa-statement-parser.test.mjs tests/pdfjs-worker-smoke.test.cjs
       - name: Compile LITA
         run: npm run build

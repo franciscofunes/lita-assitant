@@ -232,11 +232,106 @@ const santanderLayoutError = (reason: string): Error => {
 }
 
 /**
+ * Santander renders transactions in separate fixed columns, but PDF.js can
+ * return receipt/amount/date as independent text items. Reconstruct purchases
+ * from their positions rather than assuming a single concatenated text row.
+ *
+ * Only accept six-digit receipt anchors in the verified movement column;
+ * infer currency from its printed amount column, never from exchange rates.
+ * The caller still independently reconciles ARS and USD purchases against
+ * the bank's own subtotals and final balances.
+ */
+export function parseSantanderPositionedPurchases(positionedPages: Positioned[][]): CardLine[] {
+  const receiptPattern = /^\d{6}$/
+  const datePattern = /^\d{2}\/\d{2}\/\d{2}$/
+  const numericAmount = /^(-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})(?:\s*(?:pesos|d[oó]lares))?$/i
+  const items: CardLine[] = []
+  let lastDate = ''
+
+  // First page is the cover; movement tables occupy subsequent pages.
+  for (let pageIndex = 1; pageIndex < Math.min(positionedPages.length, 6); pageIndex++) {
+    const page = positionedPages[pageIndex] || []
+    // Repeated Santander table headings anchor this adapter to its known
+    // format. This avoids interpreting account numbers in another layout.
+    const headings = page.filter((item) => /Monto en (?:pesos|d[oó]lares)/i.test(item.text))
+    const pesoHeading = headings.find((item) => /Monto en pesos/i.test(item.text))
+    const usdHeading = headings.find((item) => /Monto en d[oó]lares/i.test(item.text))
+    if (!pesoHeading || !usdHeading || pesoHeading.x >= usdHeading.x) continue
+    const amountSplitX = (pesoHeading.x + usdHeading.x) / 2
+    const firstReceiptX = page.find((item) => /Comprobante/i.test(item.text))?.x ?? 299
+
+    // Ignore balances and introductory rows before the movements table.
+    // Page 2 starts the detailed section lower down; later pages repeat
+    // only the table header at the top.
+    const startY = pageIndex === 1
+      ? page.find((item) => /Movimientos de\b/i.test(item.text))?.y
+      : undefined
+    if (pageIndex === 1 && startY === undefined) continue
+
+    const subtotalY = page.find((item) => /^Subtotal de\b/i.test(item.text))?.y
+    const receipts = page.filter((item) =>
+      Math.abs(item.x - firstReceiptX) <= 38 &&
+      receiptPattern.test(normalize(item.text)) &&
+      (startY === undefined || item.y < startY) &&
+      (subtotalY === undefined || item.y > subtotalY),
+    ).sort((a, b) => b.y - a.y || a.x - b.x)
+
+    const dates = page.filter((item) =>
+      item.x < 90 && datePattern.test(normalize(item.text)),
+    ).sort((a, b) => a.y - b.y)
+
+    for (const receipt of receipts) {
+      // PDF text y-axis runs bottom-to-top: a printed date above or on
+      // this row is the nearest date with y >= the receipt's baseline.
+      const priorDate = dates.find((item) => item.y >= receipt.y - 8)
+      if (priorDate) lastDate = iso(normalize(priorDate.text))
+      if (!lastDate) continue
+
+      const description = page.filter((item) =>
+        item.x >= 95 && item.x < receipt.x - 3 &&
+        Math.abs(item.y - receipt.y) <= 8 &&
+        normalize(item.text),
+      ).sort((a, b) => a.x - b.x).map((item) => item.text).join(' ')
+      const installment = /(\d{1,2}\s+de\s+\d{1,2})\s*$/i.exec(description)
+      const merchant = normalize(installment
+        ? description.slice(0, installment.index)
+        : description)
+      if (!merchant || merchant.length > 90) continue
+
+      const amounts = page.filter((item) =>
+        item.x >= pesoHeading.x &&
+        Math.abs(item.y - receipt.y) <= 8 &&
+        numericAmount.test(normalize(item.text)),
+      )
+      // Ambiguous currency / multiple amount cells must fail closed.
+      if (amounts.length !== 1) continue
+      const amountItem = amounts[0]
+      const amountMatch = numericAmount.exec(normalize(amountItem.text))
+      if (!amountMatch) continue
+      const value = cents(decimal(amountMatch[1]))
+      const currency: 'ARS' | 'USD' = amountItem.x < amountSplitX ? 'ARS' : 'USD'
+      // Reject contradictory textual currency labels if they are present.
+      if (/pesos/i.test(amountItem.text) && currency !== 'ARS') continue
+      if (/d[oó]lares/i.test(amountItem.text) && currency !== 'USD') continue
+
+      items.push({
+        date: lastDate, merchant, currency, amount: fixed(value),
+        receipt: normalize(receipt.text),
+        installment: installment ? normalize(installment[1]) : null,
+        sourcePage: pageIndex + 1,
+        type: 'purchase', includeInCashFlow: false,
+      })
+    }
+  }
+  return items
+}
+
+/**
  * This deterministic adapter deliberately supports the uploaded Visa layout.
  * Unknown/scanned layouts fail closed rather than hallucinating line items.
  * Individual purchase values always remain excluded from LTC cash-flow totals.
  */
-export function parseVisaTextPages(pages: string[][], fileSha256: string): StatementExtraction {
+export function parseVisaTextPages(pages: string[][], fileSha256: string, positionedPages?: Positioned[][]): StatementExtraction {
   if (pages[0]?.some((line) => /\bVISA GOLD\b/i.test(line)) &&
       pages[0]?.some((line) => /CIERRE ACTUAL:/i.test(line))) {
     return parseBancoCiudadVisaTextPages(pages, fileSha256)
@@ -295,6 +390,13 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
         sourcePage: page + 1, type: 'purchase', includeInCashFlow: false,
       })
     }
+  }
+  // A digital Santander PDF can have its 6-digit receipt and amount in
+  // different PDF.js text items. Prefer the geometry-based extraction when
+  // available, and keep exact per-currency reconciliation unchanged below.
+  if (positionedPages) {
+    const positionedItems = parseSantanderPositionedPurchases(positionedPages)
+    if (positionedItems.length) parsed.splice(0, parsed.length, ...positionedItems)
   }
   if (!parsed.length || parsed.length > 400) throw santanderLayoutError('MOVEMENT_ROWS_NOT_FOUND')
   const subtotal = { ARS: 0, USD: 0 }
@@ -367,7 +469,7 @@ export async function extractVisaStatement(bytes: Uint8Array, sha: string): Prom
     const layout = (baselineTolerance: number) => positions.map((items) =>
       sortPdfTextLines(items, baselineTolerance))
     try {
-      return parseVisaTextPages(layout(2.2), sha)
+      return parseVisaTextPages(layout(2.2), sha, positions)
     } catch (firstError) {
       // Different font sizes can split same-row text across PDF.js baselines.
       // Try alternative text grouping, but NEVER loosen financial validation.
@@ -378,7 +480,7 @@ export async function extractVisaStatement(bytes: Uint8Array, sha: string): Prom
         firstError.message === 'STATEMENT_RECONCILIATION_FAILED' ? firstError : null
       for (const tolerance of [4.5, 6.5]) {
         try {
-          return parseVisaTextPages(layout(tolerance), sha)
+          return parseVisaTextPages(layout(tolerance), sha, positions)
         } catch (retryError) {
           if (!(retryError instanceof Error)) throw retryError
           if (retryError.message === 'STATEMENT_RECONCILIATION_FAILED') {

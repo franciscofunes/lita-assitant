@@ -262,6 +262,7 @@ export function Chat() {
   const [activeChatId, setActiveChatId] = useState('')
   const [activeCreatedAt, setActiveCreatedAt] = useState('')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const [visibleHeight, setVisibleHeight] = useState<number | null>(null)
   const parentOriginRef = useRef<string | null>(null)
   const lastSavedSignatureRef = useRef('')
 
@@ -285,6 +286,26 @@ export function Chat() {
       context: financialContext,
     },
   })
+
+  // Inside an iframe, 100dvh may not track Android's software keyboard
+  // synchronously. Size only the scrollable chat shell to the actual visual
+  // viewport; its flex layout keeps the composer directly above the keyboard.
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const update = () => {
+      const next = Math.round(viewport.height)
+      if (next > 0) setVisibleHeight((previous) => previous === next ? previous : next)
+    }
+    update()
+    viewport.addEventListener('resize', update)
+    window.addEventListener('resize', update)
+    return () => {
+      viewport.removeEventListener('resize', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [])
 
   useEffect(() => {
     setActiveChatId(createChatId())
@@ -578,7 +599,7 @@ export function Chat() {
       : null
 
   return (
-    <main className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <main data-testid="lita-chat-shell" style={visibleHeight ? { height: visibleHeight } : undefined} className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <header className="shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 px-4 py-3 backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -655,7 +676,7 @@ export function Chat() {
         </div>
       </header>
 
-      <section className="lita-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+      <section className="lita-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-4 sm:px-5">
         <div className="mx-auto flex w-full max-w-2xl flex-col">
           {messages.length === 0 && (
             <div className="mb-6">
@@ -829,7 +850,7 @@ export function Chat() {
         </div>
       </section>
 
-      <footer className="shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 p-3.5 backdrop-blur sm:p-4">
+      <footer data-testid="lita-chat-composer" className="relative z-10 shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 px-3 pt-2.5 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur sm:p-4">
         {saveStatus !== 'idle' && (
           <div role={saveStatus === 'error' ? 'alert' : 'status'} className="mx-auto mb-2 flex w-full max-w-2xl items-center justify-between gap-2 text-xs">
             <span className={saveStatus === 'error'
@@ -854,9 +875,12 @@ export function Chat() {
           <div className="min-w-0 flex-1 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 transition focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/20">
             <textarea
               rows={1}
+              enterKeyHint="send"
               value={input}
               onChange={handleInputChange}
               onKeyDown={(event) => {
+                // Android IME may dispatch Enter while composing a suggestion.
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault()
                   event.currentTarget.form?.requestSubmit()
@@ -868,9 +892,9 @@ export function Chat() {
                   ? 'Esperando un proveedor de IA…'
                   : 'Preguntale a LITA…'
               }
-              className="max-h-28 min-h-[24px] w-full resize-none bg-transparent text-sm leading-6 text-slate-900 dark:text-white outline-none placeholder:text-slate-500 dark:placeholder:text-slate-500 disabled:cursor-not-allowed"
+              className="max-h-28 min-h-[24px] w-full resize-none bg-transparent text-base sm:text-sm leading-6 text-slate-900 dark:text-white outline-none placeholder:text-slate-500 dark:placeholder:text-slate-500 disabled:cursor-not-allowed"
             />
-            <div className="mt-1 flex items-center justify-between gap-2">
+            <div className="mt-1 hidden items-center justify-between gap-2 sm:flex">
               <span className="text-[10px] text-slate-500 dark:text-slate-500">
                 Enter para enviar · Shift + Enter para nueva línea
               </span>

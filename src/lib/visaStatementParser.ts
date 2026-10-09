@@ -369,25 +369,28 @@ export async function extractVisaStatement(bytes: Uint8Array, sha: string): Prom
     try {
       return parseVisaTextPages(layout(2.2), sha)
     } catch (firstError) {
-      // PDF.js sometimes assigns slightly different text baselines to the
-      // date, merchant and amount columns of the SAME printed row. Only retry
-      // for a structural layout error. Every retry still checks each item's
-      // amount against the bank's independent subtotals and final totals.
-      if (!(firstError instanceof Error) || firstError.message !== 'UNSUPPORTED_PDF_LAYOUT') {
-        throw firstError
-      }
+      // Different font sizes can split same-row text across PDF.js baselines.
+      // Try alternative text grouping, but NEVER loosen financial validation.
+      const supportedFailure = firstError instanceof Error &&
+        ['UNSUPPORTED_PDF_LAYOUT', 'STATEMENT_RECONCILIATION_FAILED'].includes(firstError.message)
+      if (!supportedFailure) throw firstError
+      let mismatch = firstError instanceof Error &&
+        firstError.message === 'STATEMENT_RECONCILIATION_FAILED' ? firstError : null
       for (const tolerance of [4.5, 6.5]) {
         try {
           return parseVisaTextPages(layout(tolerance), sha)
         } catch (retryError) {
-          // If the relaxed layout finds rows but fails reconciliation, refuse
-          // the import rather than guessing which reading is correct.
-          if (!(retryError instanceof Error) || retryError.message !== 'UNSUPPORTED_PDF_LAYOUT') {
+          if (!(retryError instanceof Error)) throw retryError
+          if (retryError.message === 'STATEMENT_RECONCILIATION_FAILED') {
+            mismatch = retryError
+          } else if (retryError.message !== 'UNSUPPORTED_PDF_LAYOUT') {
             throw retryError
           }
         }
       }
-      throw firstError
+      // If any grouping yields purchases that disagree with the bank,
+      // report reconciliation failure rather than an unsupported layout.
+      throw mismatch || firstError
     }
   } finally {
     await pdf.destroy()

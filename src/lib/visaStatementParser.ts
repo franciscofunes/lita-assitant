@@ -52,12 +52,12 @@ const extractMoney = (raw: string): { cents: number; currency: 'ARS' | 'USD' } |
   return found ? { cents: cents(decimal(found[1])), currency: /pesos/i.test(found[2]) ? 'ARS' : 'USD' } : null
 }
 const normalize = (raw: string) => raw.replace(/\s+/g, ' ').trim()
-export const sortPdfTextLines = (items: Positioned[]) => {
+export const sortPdfTextLines = (items: Positioned[], baselineTolerance = 2.2) => {
   const sorted = items.filter((x) => x.text.trim()).sort((a, b) => b.y - a.y || a.x - b.x)
   const rows: Array<{ y: number; segments: Positioned[] }> = []
   for (const item of sorted) {
     const last = rows[rows.length - 1]
-    if (last && Math.abs(last.y - item.y) <= 2.2) last.segments.push(item)
+    if (last && Math.abs(last.y - item.y) <= baselineTolerance) last.segments.push(item)
     else rows.push({ y: item.y, segments: [item] })
   }
   return rows.map((row) => normalize(row.segments.sort((a, b) => a.x - b.x)
@@ -224,6 +224,13 @@ function parseBancoCiudadVisaTextPages(pages: string[][], fileSha256: string): S
 }
 
 
+// These are fixed diagnostic labels only: never log PDF text or banking data.
+const santanderLayoutError = (reason: string): never => {
+  const error = new Error('UNSUPPORTED_PDF_LAYOUT')
+  error.name = 'SANTANDER_' + reason
+  throw error
+}
+
 /**
  * This deterministic adapter deliberately supports the uploaded Visa layout.
  * Unknown/scanned layouts fail closed rather than hallucinating line items.
@@ -234,12 +241,12 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
       pages[0]?.some((line) => /CIERRE ACTUAL:/i.test(line))) {
     return parseBancoCiudadVisaTextPages(pages, fileSha256)
   }
-  if (pages.length < 2 || !pages[0].some((line) => /Resumen Visa/i.test(line))) {
-    throw new Error('UNSUPPORTED_PDF_LAYOUT')
+  if (pages.length < 2 || !pages[0].some((line) => /Resumen\s+Visa/i.test(line))) {
+    santanderLayoutError('HEADER_NOT_FOUND')
   }
   const firstPage = pages[0].join(' ')
   const allDates = firstPage.match(/\b\d{2}\/\d{2}\/\d{2}\b/g) || []
-  if (allDates.length < 6) throw new Error('UNSUPPORTED_PDF_LAYOUT')
+  if (allDates.length < 6) santanderLayoutError('BILLING_DATES_NOT_FOUND')
   const close = iso(allDates[2]); const due = iso(allDates[3])
   const fullText = pages.flat().join(' ')
   // Header totals are intentionally checked against the closing summary.
@@ -251,7 +258,7 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
   const totalUsd = totalsLine
     ? /Total en d[oó]lares\D*([\d.]+,\d{2})/i.exec(totalsLine)?.[1]
     : /U\$S\s*([\d.]+,\d{2})/i.exec(firstPage)?.[1]
-  if (!totalArs || !totalUsd || !close || !due) throw new Error('UNSUPPORTED_PDF_LAYOUT')
+  if (!totalArs || !totalUsd || !close || !due) santanderLayoutError('AMOUNTS_OR_DATES_NOT_FOUND')
 
   const parsed: CardLine[] = []
   let lastDate = ''
@@ -289,7 +296,7 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string): State
       })
     }
   }
-  if (!parsed.length || parsed.length > 400) throw new Error('UNSUPPORTED_PDF_LAYOUT')
+  if (!parsed.length || parsed.length > 400) santanderLayoutError('MOVEMENT_ROWS_NOT_FOUND')
   const subtotal = { ARS: 0, USD: 0 }
   for (const item of parsed) subtotal[item.currency] += cents(Number(item.amount))
   const purchaseTotalMatch = /Subtotal de[^\n]*?Subtotal en pesos\D*([\d.]+,\d{2})\.?\s*Subtotal en d[oó]lares\D*([\d.]+,\d{2})/i.exec(pages.flat().find((line) => /Subtotal de/i.test(line)) || '')
@@ -348,16 +355,40 @@ export async function extractVisaStatement(bytes: Uint8Array, sha: string): Prom
   const pdf = await loading.promise as PdfDocument
   try {
     if (pdf.numPages < 2 || pdf.numPages > 12) throw new Error('UNSUPPORTED_PDF_LENGTH')
-    const pages: string[][] = []
+    const positions: Positioned[][] = []
     for (let number = 1; number <= pdf.numPages; number++) {
       const page = await pdf.getPage(number)
       const content = await page.getTextContent()
       const positioned: Positioned[] = content.items
         .filter((item) => typeof item.str === 'string' && Array.isArray(item.transform))
         .map((item) => ({ text: String(item.str), x: item.transform![4], y: item.transform![5] }))
-      pages.push(sortPdfTextLines(positioned))
+      positions.push(positioned)
     }
-    return parseVisaTextPages(pages, sha)
+    const layout = (baselineTolerance: number) => positions.map((items) =>
+      sortPdfTextLines(items, baselineTolerance))
+    try {
+      return parseVisaTextPages(layout(2.2), sha)
+    } catch (firstError) {
+      // PDF.js sometimes assigns slightly different text baselines to the
+      // date, merchant and amount columns of the SAME printed row. Only retry
+      // for a structural layout error. Every retry still checks each item's
+      // amount against the bank's independent subtotals and final totals.
+      if (!(firstError instanceof Error) || firstError.message !== 'UNSUPPORTED_PDF_LAYOUT') {
+        throw firstError
+      }
+      for (const tolerance of [4.5, 6.5]) {
+        try {
+          return parseVisaTextPages(layout(tolerance), sha)
+        } catch (retryError) {
+          // If the relaxed layout finds rows but fails reconciliation, refuse
+          // the import rather than guessing which reading is correct.
+          if (!(retryError instanceof Error) || retryError.message !== 'UNSUPPORTED_PDF_LAYOUT') {
+            throw retryError
+          }
+        }
+      }
+      throw firstError
+    }
   } finally {
     await pdf.destroy()
   }

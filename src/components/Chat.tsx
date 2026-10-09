@@ -269,6 +269,8 @@ export function Chat() {
   const lastSavedSignatureRef = useRef('')
   const pendingHistoricalRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
   const [readingHistory, setReadingHistory] = useState(false)
+  const [pendingHistoricalPrompt, setPendingHistoricalPrompt] = useState<string | null>(null)
+  const currentHostContextRef = useRef<FinancialContext | null>(null)
 
   const allowedParentOrigins = useMemo(
     () => new Set([...defaultParentOrigins, ...configuredParentOrigins()]),
@@ -335,6 +337,7 @@ export function Chat() {
         event.data?.payload &&
         typeof event.data.payload === 'object'
       ) {
+        currentHostContextRef.current = event.data.payload
         setFinancialContext(event.data.payload)
         return
       }
@@ -544,6 +547,20 @@ export function Chat() {
     })
   }
 
+  // AI SDK 2.x accepts context only at hook initialization, not as an
+  // append() option. Render the historical context first, then enqueue the
+  // message in this effect so the hook uses the newest body.
+  useEffect(() => {
+    if (!pendingHistoricalPrompt || financialContext?.scope !== 'historical-query') return
+    const question = pendingHistoricalPrompt
+    setPendingHistoricalPrompt(null)
+    append({ role: 'user', content: question })
+      .finally(() => {
+        setFinancialContext(currentHostContextRef.current)
+        setReadingHistory(false)
+      })
+  }, [append, financialContext, pendingHistoricalPrompt])
+
   const submitFinancialMessage = async (event: React.FormEvent<HTMLFormElement>) => {
     const question = input.trim()
     if (!question || isLoading || readingHistory) {
@@ -571,6 +588,7 @@ export function Chat() {
           { id: createChatId(), role: 'user', content: question },
           { id: createChatId(), role: 'assistant', content: errorText },
         ])
+        setReadingHistory(false)
         return
       }
       const context = {
@@ -578,12 +596,20 @@ export function Chat() {
         scope: 'historical-query',
         historicalAnalysis: history,
       }
-      // Per-request body ensures no stale React state races between iframe
-      // reply and model call. Do not send the unrelated current-view 50 rows.
+      // The useChat hook must first re-render with this dated context.
+      // The effect above appends the question after that render.
       setInput('')
-      await append({ role: 'user', content: question }, { body: { context } })
-    } finally {
+      setFinancialContext(context)
+      setPendingHistoricalPrompt(question)
+      return
+    } catch {
       setReadingHistory(false)
+      setInput('')
+      setMessages([
+        ...messages,
+        { id: createChatId(), role: 'user', content: question },
+        { id: createChatId(), role: 'assistant', content: 'No pude completar la consulta histórica. Intentá nuevamente.' },
+      ])
     }
   }
 

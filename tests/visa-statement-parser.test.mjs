@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseVisaTextPages, sortPdfTextLines } from '../src/lib/visaStatementParser.ts'
+import { parseVisaTextPages, sortPdfTextLines, parseSantanderPositionedPurchases } from '../src/lib/visaStatementParser.ts'
 
 const pages = [
   ['Resumen Visa', 'Total a pagar', 'Cierre anterior Vencimiento anterior Cierre actual Vencimiento actual Próximo cierre Próximo vencimiento',
@@ -131,4 +131,50 @@ test('Santander VISA parses horizontally aligned fragments with near baselines',
   assert.ok(result.items.every((item) => item.includeInCashFlow === false))
   const altered = resilient.map((line) => line.replace('100,00 pesos', '101,00 pesos'))
   assert.throws(() => parseVisaTextPages([pages[0], [pages[1][1], ...altered], ...pages.slice(2)], 'd'.repeat(64)), /STATEMENT_RECONCILIATION_FAILED/)
+})
+
+// PII-free Santander fixture derived from the published column geometry.
+// No original PDF bytes, merchant names, account details or receipt values.
+const positioned = [[], [
+  { text: 'Movimientos de usuario', x: 42, y: 620 },
+  { text: 'Comprobante', x: 299, y: 570 },
+  { text: 'Monto en pesos', x: 380, y: 570 },
+  { text: 'Monto en dólares', x: 470, y: 570 },
+  { text: '01/09/26', x: 45, y: 545 },
+  { text: 'Supermercado', x: 104, y: 545 },
+  { text: '111111', x: 299, y: 545 },
+  { text: '100,00 pesos', x: 410, y: 545 },
+  { text: '02/09/26', x: 45, y: 518 },
+  { text: 'Suscripción', x: 104, y: 518 },
+  { text: '222222', x: 299, y: 518 },
+  { text: '20,00 dólares', x: 503, y: 518 },
+], [], [], [], []]
+
+test('Santander geometry extracts receipt, amount and currency from separate PDF.js items', () => {
+  const items = parseSantanderPositionedPurchases(positioned)
+  assert.equal(items.length, 2)
+  assert.deepEqual(items.map((row) => row.currency), ['ARS', 'USD'])
+  assert.deepEqual(items.map((row) => row.amount), ['100.00', '20.00'])
+  assert.equal(items[0].sourcePage, 2)
+  assert.ok(items.every((row) => row.includeInCashFlow === false))
+  const result = parseVisaTextPages(pages, 'b'.repeat(64), positioned)
+  assert.equal(result.items.length, 2)
+  assert.equal(result.statement.reconciliation.ARS, true)
+  assert.equal(result.statement.reconciliation.USD, true)
+})
+
+test('Santander column reconstruction fails closed when its numbers disagree with bank subtotals', () => {
+  const bad = positioned.map((rows) => rows.map((item) => ({ ...item })))
+  bad[1].find((item) => item.text === '100,00 pesos').text = '101,00 pesos'
+  const detected = parseSantanderPositionedPurchases(bad)
+  assert.equal(detected.length, 2)
+  assert.throws(() => parseVisaTextPages(pages, 'c'.repeat(64), bad), /STATEMENT_RECONCILIATION_FAILED/)
+})
+
+test('Santander geometry carries forward purchase date and rejects ambiguous amount columns', () => {
+  const noDate = positioned.map((rows) => rows.map((item) => ({ ...item })))
+  noDate[1] = noDate[1].filter((item) => item.text !== '02/09/26')
+  assert.equal(parseSantanderPositionedPurchases(noDate)[1].date, '2026-09-01')
+  noDate[1].push({ text: '1,00 pesos', x: 400, y: 545 })
+  assert.equal(parseSantanderPositionedPurchases(noDate).length, 1)
 })

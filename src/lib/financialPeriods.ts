@@ -48,5 +48,8 @@ export const requestedFinancialPeriod = (
   if (/\b(?:ano pasado|ultimo ano)\b/.test(clean)) year = today.getFullYear() - 1
   else if (!yearMatch && !/\b(?:este ano|ano actual)\b/.test(clean)) return null
   if (year < 2000 || year > today.getFullYear() + 1) return null
-  return { from: isoDay(year, 1, 1), to: isoDay(year, 12, 31), label: String(year) }
+  const lastDay = year === today.getFullYear()
+    ? isoDay(today.getFullYear(), today.getMonth() + 1, today.getDate())
+    : isoDay(year, 12, 31)
+  return { from: isoDay(year, 1, 1), to: lastDay, label: String(year) }
 }

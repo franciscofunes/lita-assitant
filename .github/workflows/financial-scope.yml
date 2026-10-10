@@ -4,14 +4,22 @@ on:
     paths:
       - 'src/lib/financialScope.ts'
       - 'src/lib/financialPeriods.ts'
+      - 'src/lib/transactionMarkdownWizard.ts'
+      - 'src/components/TransactionMarkdownWizard.tsx'
+      - 'src/components/Chat.tsx'
       - 'tests/finance-scope.test.mjs'
+      - 'tests/transaction-wizard.test.mjs'
       - '.github/workflows/financial-scope.yml'
   push:
     branches: [main]
     paths:
       - 'src/lib/financialScope.ts'
       - 'src/lib/financialPeriods.ts'
+      - 'src/lib/transactionMarkdownWizard.ts'
+      - 'src/components/TransactionMarkdownWizard.tsx'
+      - 'src/components/Chat.tsx'
       - 'tests/finance-scope.test.mjs'
+      - 'tests/transaction-wizard.test.mjs'
 jobs:
   scope-tests:
     runs-on: ubuntu-latest
@@ -21,4 +29,6 @@ jobs:
         with:
           node-version: '24'
       - name: Run domain and history date tests
-        run: node --test tests/finance-scope.test.mjs
+        run: node --test tests/finance-scope.test.mjs tests/transaction-wizard.test.mjs
+      - name: Install dependencies and build Lita
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run build

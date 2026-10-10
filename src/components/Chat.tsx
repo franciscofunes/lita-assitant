@@ -706,6 +706,12 @@ export function Chat() {
         : `${providerStatus.providers.length} proveedores disponibles`
       : null
 
+  const suppliedWizardCategories = financialContext?.categories
+  const wizardCategories = (Array.isArray(suppliedWizardCategories) ? suppliedWizardCategories : [])
+    .filter((entry): entry is { name: string; isExpense?: boolean } =>
+      Boolean(entry && typeof entry === 'object' && 'name' in entry && typeof entry.name === 'string'))
+    .map((entry) => ({ name: entry.name, isExpense: entry.isExpense === true }))
+
   return (
     <main data-testid="lita-chat-shell" style={visibleHeight ? { height: visibleHeight } : undefined} className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <header className="shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 px-4 py-3 backdrop-blur">
@@ -1049,10 +1055,7 @@ export function Chat() {
 
       {transactionWizardOpen && (
         <TransactionMarkdownWizard
-          categories={(Array.isArray(financialContext?.categories) ? financialContext.categories : [])
-            .filter((entry): entry is { name: string; isExpense?: boolean } =>
-              Boolean(entry && typeof entry === 'object' && 'name' in entry && typeof entry.name === 'string'))
-            .map((entry) => ({ name: entry.name, isExpense: entry.isExpense === true }))}
+          categories={wizardCategories}
           onClose={() => setTransactionWizardOpen(false)}
         />
       )}

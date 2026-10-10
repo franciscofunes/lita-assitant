@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseVisaTextPages, sortPdfTextLines, parseSantanderPositionedPurchases } from '../src/lib/visaStatementParser.ts'
+import { parseVisaTextPages, sortPdfTextLines, parseSantanderPositionedPurchases, parseSantanderPositionedTotals } from '../src/lib/visaStatementParser.ts'
 
 const pages = [
   ['Resumen Visa', 'Total a pagar', 'Cierre anterior Vencimiento anterior Cierre actual Vencimiento actual Próximo cierre Próximo vencimiento',
@@ -212,4 +212,70 @@ test('Santander recognizes an entire multi-page 83-purchase positioned fixture w
   assert.equal(purchases.filter((row) => row.currency === 'ARS').length, 81)
   assert.equal(purchases.filter((row) => row.currency === 'USD').length, 2)
   assert.ok(purchases.every((row) => row.includeInCashFlow === false))
+})
+
+
+// All numbers, merchants and receipts in this fixture are deliberately
+// synthetic. It models PDF.js returning bank totals as independent text spans
+// instead of one concatenated "Subtotal..." or "Total a pagar..." line.
+const anchoredSantander = () => {
+  const positions = Array.from({ length: 8 }, () => [])
+  positions[1] = [
+    ...positioned[1].map((span) => ({ ...span })),
+    { text: 'Saldo del resumen anterior *', x: 53, y: 398 },
+    { text: 'Saldo en pesos. Menos 5,00.', x: 404, y: 398 },
+  ]
+  positions[5] = [
+    { text: 'Subtotal de usuario', x: 103, y: 680 },
+    { text: 'Subtotal en pesos. 100,00.', x: 389, y: 680 },
+    { text: 'Subtotal en dolares. 20,00.', x: 503, y: 680 },
+    { text: 'Db.rg 5617 30% ( 33,33 )', x: 103, y: 568 },
+    { text: '10,00 pesos', x: 403, y: 568 },
+    { text: 'Total a pagar', x: 54, y: 503 },
+    { text: 'Total en pesos. 105,00.', x: 391, y: 503 },
+    { text: 'Total en dolares. 20,00.', x: 503, y: 503 },
+    { text: 'Mínimo a pagar', x: 54, y: 460 },
+    { text: 'Total en pesos. 20,00.', x: 405, y: 460 },
+  ]
+  return positions
+}
+
+test('Santander reads independently positioned ARS, USD, previous credit, VAT and minimum', () => {
+  const positions = anchoredSantander()
+  assert.deepEqual(parseSantanderPositionedTotals(positions), {
+    subtotal: { ARS: 10000, USD: 2000 },
+    finalTotal: { ARS: 10500, USD: 2000 },
+    taxesArs: 1000,
+    previousCreditArs: -500,
+    minimumPaymentArs: 2000,
+  })
+  const fragments = pages.map((page) => [...page])
+  // No single flattened line contains the bank's independently printed
+  // subtotal/total amounts. This previously failed reconciliation.
+  fragments[5] = ['Subtotal de usuario', 'Db.rg 5617 30%', 'Total a pagar', 'Mínimo a pagar']
+  const result = parseVisaTextPages(fragments, 'f'.repeat(64), positions)
+  assert.equal(result.items.length, 2)
+  assert.deepEqual(result.statement.totals, { ARS: '105.00', USD: '20.00' })
+  assert.deepEqual(result.statement.purchases, { ARS: '100.00', USD: '20.00' })
+  assert.equal(result.statement.previousCreditArs, '-5.00')
+  assert.equal(result.statement.taxesArs, '10.00')
+  assert.equal(result.statement.minimumPaymentArs, '20.00')
+})
+
+test('Santander refuses an altered bank subtotal even when PDF fragments are split', () => {
+  const positions = anchoredSantander()
+  positions[5][1].text = 'Subtotal en pesos. 101,00.'
+  assert.throws(() => parseVisaTextPages(pages, '7'.repeat(64), positions),
+    /STATEMENT_RECONCILIATION_FAILED/)
+})
+
+test('Santander refuses tampered final balance or missing currency cells', () => {
+  const positions = anchoredSantander()
+  positions[5][6].text = 'Total en pesos. 106,00.'
+  assert.throws(() => parseVisaTextPages(pages, '8'.repeat(64), positions),
+    /STATEMENT_RECONCILIATION_FAILED/)
+  const missing = anchoredSantander()
+  missing[5].splice(2, 1)
+  assert.throws(() => parseVisaTextPages(pages, '9'.repeat(64), missing),
+    /UNSUPPORTED_PDF_LAYOUT/)
 })

@@ -462,3 +462,55 @@ test('Santander rejects modified or ambiguous printed prior credit amounts', () 
   assert.throws(() => parseSantanderPositionedTotals(notNegative),
     /UNSUPPORTED_PDF_LAYOUT/)
 })
+
+
+test('Santander reconciles a seven-page statement with subtotal on page 4 and balance on page 5', () => {
+  const positions = anchoredSantander()
+  const originalFooter = positions[5]
+  const subtotalSpans = originalFooter.filter((span) => /Subtotal/.test(span.text))
+  const balanceSpans = originalFooter.filter((span) => !/Subtotal/.test(span.text))
+  // Only the footer's placement changes. Bank-supplied values stay identical.
+  positions[3] = subtotalSpans
+  positions[4] = balanceSpans
+  positions[5] = []
+  positions.length = 7
+  const textPages = [...pages, ['Copia fiel de caracter informativo']]
+  const published = parseSantanderPositionedTotals(positions)
+  assert.deepEqual(published, {
+    subtotal: { ARS: 10000, USD: 2000 },
+    finalTotal: { ARS: 10500, USD: 2000 },
+    taxesArs: 1000,
+    previousCreditArs: -500,
+    minimumPaymentArs: 2000,
+  })
+  const result = parseVisaTextPages(textPages, '4'.repeat(64), positions)
+  assert.equal(result.sourcePages, 7)
+  assert.equal(result.items.length, 2)
+  assert.deepEqual(result.statement.totals, { ARS: '105.00', USD: '20.00' })
+  assert.deepEqual(result.statement.purchases, { ARS: '100.00', USD: '20.00' })
+  assert.equal(result.statement.previousCreditArs, '-5.00')
+  assert.equal(result.statement.taxesArs, '10.00')
+  assert.deepEqual(result.statement.reconciliation, { ARS: true, USD: true })
+  assert.ok(result.items.every((item) => item.includeInCashFlow === false))
+})
+
+test('Santander cross-page totals still reject a mismatched bank total', () => {
+  const positions = anchoredSantander()
+  positions[3] = positions[5].filter((span) => /Subtotal/.test(span.text))
+  positions[4] = positions[5].filter((span) => !/Subtotal/.test(span.text))
+  positions[5] = []
+  positions[4].find((span) => /Total en pesos.*105,00/.test(span.text)).text =
+    'Total en pesos. 106,00.'
+  assert.throws(() => parseVisaTextPages(pages, '5'.repeat(64), positions),
+    /STATEMENT_RECONCILIATION_FAILED/)
+})
+
+test('Santander refuses duplicated subtotals and totals too far from subtotal page', () => {
+  const duplicated = anchoredSantander()
+  duplicated[3] = duplicated[5].filter((span) => /Subtotal/.test(span.text))
+  assert.throws(() => parseSantanderPositionedTotals(duplicated), /UNSUPPORTED_PDF_LAYOUT/)
+  const separated = anchoredSantander()
+  separated[3] = separated[5].filter((span) => /Subtotal/.test(span.text))
+  separated[5] = separated[5].filter((span) => !/Subtotal/.test(span.text))
+  assert.throws(() => parseSantanderPositionedTotals(separated), /UNSUPPORTED_PDF_LAYOUT/)
+})

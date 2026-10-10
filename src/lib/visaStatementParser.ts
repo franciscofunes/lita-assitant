@@ -365,21 +365,29 @@ export function parseSantanderPositionedTotals(positions: Positioned[][]) {
     if (matches.length !== 1) return layoutError(label + '_CELL')
     return cents(decimal(matches[0][0]))
   }
-  const footer = positions.slice(1).map(rowsOf).find((rows) =>
-    rows.some((row) => /Subtotal\s+de\b/i.test(row.label)) &&
-    rows.some((row) => /Total\s+a\s+pagar/i.test(row.label)),
-  )
-  if (!footer) return null
+  // Santander may print the purchase subtotal on the last movement page
+  // and move taxes, final total and minimum payment to the following page.
+  // Search for the single subtotal anchor, then inspect ONLY that page and
+  // the immediately following page (never arbitrary amounts elsewhere).
+  const footerPages = positions.slice(1).map(rowsOf)
+  const subtotalPages = footerPages
+    .map((rows, index) => ({ rows, index }))
+    .filter(({ rows }) => rows.some((row) => /Subtotal\s+de\b/i.test(row.label)))
+  if (!subtotalPages.length) return null
+  if (subtotalPages.length !== 1) return layoutError('SUBTOTAL_AMBIGUOUS')
+  const footer = footerPages.slice(subtotalPages[0].index, subtotalPages[0].index + 2).flat()
 
   const findRow = (rows: Row[], pattern: RegExp, name: string) => {
-    const row = rows.find((entry) => pattern.test(entry.label))
-    if (!row) return layoutError(name + '_LABEL')
-    return row
+    const matches = rows.filter((entry) => pattern.test(entry.label))
+    if (matches.length !== 1) return layoutError(name + (matches.length ? '_AMBIGUOUS' : '_LABEL'))
+    return matches[0]
   }
   const subtotals = findRow(footer, /Subtotal\s+de\b/i, 'SUBTOTAL')
   const balance = findRow(footer, /Total\s+a\s+pagar/i, 'TOTAL')
   const minimum = findRow(footer, /M[ií]nimo\s+a\s+pagar/i, 'MINIMUM')
-  const taxes = footer.find((row) => /Db\.?\s*rg\s*5617/i.test(row.label))
+  const taxRows = footer.filter((row) => /Db\.?\s*rg\s*5617/i.test(row.label))
+  if (taxRows.length > 1) return layoutError('TAX_AMBIGUOUS')
+  const taxes = taxRows[0]
   // RG 5617 is optional in general, but never substitute a fabricated tax
   // when the full balance does not independently reconcile.
   const subtotal = {

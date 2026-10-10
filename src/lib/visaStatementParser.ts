@@ -334,65 +334,79 @@ export function santanderPositionedCounts(positionedPages: Positioned[][]) {
  * No user data or numeric values are logged. Unknown layouts fail closed.
  */
 export function parseSantanderPositionedTotals(positions: Positioned[][]) {
-  const numeric = /-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}/
-  const rows = positions.find((spans) =>
-    spans.some((s) => /Subtotal de\b/i.test(s.text)) &&
-    spans.some((s) => /Total a pagar/i.test(s.text)),
+  // PDF.js does not guarantee that a heading ("Total a pagar") or a cell
+  // ("Subtotal en pesos. 1.572.460,67") arrives as one text item. Join nearby
+  // glyph runs by PRINTED row before checking any financial amounts.
+  const numeric = /-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}/g
+  const layoutError = (detail: string): never => {
+    throw santanderLayoutError('FOOTER_' + detail)
+  }
+  const rowsOf = (spans: Positioned[]) => {
+    const sorted = spans.filter((s) => s.text.trim())
+      .slice().sort((a, b) => b.y - a.y || a.x - b.x)
+    const bands: Array<{ y: number; items: Positioned[] }> = []
+    for (const span of sorted) {
+      const last = bands[bands.length - 1]
+      if (last && Math.abs(span.y - last.y) <= 8) last.items.push(span)
+      else bands.push({ y: span.y, items: [span] })
+    }
+    return bands.map(({ y, items }) => ({
+      y, items: items.sort((a, b) => a.x - b.x),
+      label: items.filter((s) => s.x < 365).map((s) => s.text).join(' ').replace(/\s+/g, ' ').trim(),
+    }))
+  }
+  type Row = ReturnType<typeof rowsOf>[number]
+  const currencyValue = (row: Row, lower: number, upper: number, label: string) => {
+    const column = row.items.filter((s) => s.x >= lower && s.x < upper)
+    // Both the common (single text item) and split-font cases are handled.
+    // Financial reconciliation below will independently reject wrong sums.
+    const merged = column.map((s) => s.text.trim()).join(' ')
+    const matches = [...merged.matchAll(numeric)]
+    if (matches.length !== 1) return layoutError(label + '_CELL')
+    return cents(decimal(matches[0][0]))
+  }
+  const footer = positions.slice(1).map(rowsOf).find((rows) =>
+    rows.some((row) => /Subtotal\s+de\b/i.test(row.label)) &&
+    rows.some((row) => /Total\s+a\s+pagar/i.test(row.label)),
   )
-  // Preserve support for text-only synthetic fixtures and future templates.
-  if (!rows) return null
+  if (!footer) return null
 
-  const findAnchor = (spans: Positioned[], pattern: RegExp) =>
-    spans.find((s) => pattern.test(s.text))
-  const atY = (spans: Positioned[], y: number) =>
-    spans.filter((s) => Math.abs(s.y - y) <= 9)
-  const readCell = (spans: Positioned[], xMin: number, xMax: number, context: string): number => {
-    const values = spans.filter((s) => s.x >= xMin && s.x < xMax && numeric.test(s.text))
-    if (values.length !== 1) {
-      const failure = new Error('UNSUPPORTED_PDF_LAYOUT')
-      failure.name = 'SANTANDER_' + context + '_CELL'
-      throw failure
-    }
-    const match = numeric.exec(values[0].text)
-    if (!match) throw new Error('UNSUPPORTED_PDF_LAYOUT')
-    return cents(decimal(match[0]))
+  const findRow = (rows: Row[], pattern: RegExp, name: string) => {
+    const row = rows.find((entry) => pattern.test(entry.label))
+    if (!row) return layoutError(name + '_LABEL')
+    return row
   }
-  const readCurrencyPair = (pattern: RegExp, label: string) => {
-    const anchor = findAnchor(rows, pattern)
-    if (!anchor) throw santanderLayoutError(label + '_ANCHOR_NOT_FOUND')
-    const matching = atY(rows, anchor.y)
-    return {
-      ARS: readCell(matching, 365, 462, label + '_ARS'),
-      USD: readCell(matching, 462, 575, label + '_USD'),
-    }
+  const subtotals = findRow(footer, /Subtotal\s+de\b/i, 'SUBTOTAL')
+  const balance = findRow(footer, /Total\s+a\s+pagar/i, 'TOTAL')
+  const minimum = findRow(footer, /M[ií]nimo\s+a\s+pagar/i, 'MINIMUM')
+  const taxes = footer.find((row) => /Db\.?\s*rg\s*5617/i.test(row.label))
+  // RG 5617 is optional in general, but never substitute a fabricated tax
+  // when the full balance does not independently reconcile.
+  const subtotal = {
+    ARS: currencyValue(subtotals, 365, 462, 'SUBTOTAL_ARS'),
+    USD: currencyValue(subtotals, 462, 575, 'SUBTOTAL_USD'),
   }
-
-  const subtotal = readCurrencyPair(/Subtotal de\b/i, 'SUBTOTAL')
-  const finalTotal = readCurrencyPair(/Total a pagar/i, 'TOTAL')
-  const taxAnchor = findAnchor(rows, /Db\.rg\s*5617/i)
-  const taxesArs = taxAnchor
-    ? readCell(atY(rows, taxAnchor.y), 365, 462, 'TAX')
-    : 0
+  const finalTotal = {
+    ARS: currencyValue(balance, 365, 462, 'TOTAL_ARS'),
+    USD: currencyValue(balance, 462, 575, 'TOTAL_USD'),
+  }
+  const taxesArs = taxes ? currencyValue(taxes, 365, 462, 'TAX') : 0
+  const minimumPaymentArs = currencyValue(minimum, 365, 462, 'MINIMUM')
 
   let previousCreditArs = 0
   for (const page of positions) {
-    const previous = findAnchor(page, /Saldo del resumen anterior/i)
+    const rows = rowsOf(page)
+    const previous = rows.find((row) => /Saldo\s+del\s+resumen\s+anterior/i.test(row.label))
     if (!previous) continue
-    const band = atY(page, previous.y)
-    const adjustment = band.filter((s) =>
-      s.x >= 365 && s.x < 462 && /[Mm]enos/.test(s.text))
-    if (adjustment.length !== 1) throw santanderLayoutError('PREVIOUS_CREDIT_NOT_FOUND')
-    const value = numeric.exec(adjustment[0].text)
-    if (!value) throw santanderLayoutError('PREVIOUS_CREDIT_NOT_FOUND')
-    previousCreditArs = -cents(decimal(value[0]))
+    const adjustment = previous.items
+      .filter((s) => s.x >= 365 && s.x < 462)
+      .map((s) => s.text).join(' ')
+    if (!/Menos/i.test(adjustment)) return layoutError('PREVIOUS_CREDIT_LABEL')
+    const matches = [...adjustment.matchAll(numeric)]
+    if (matches.length !== 1) return layoutError('PREVIOUS_CREDIT_CELL')
+    previousCreditArs = -cents(decimal(matches[0][0]))
     break
   }
-
-  const minimum = findAnchor(rows, /M[ií]nimo a pagar/i)
-  const minimumPaymentArs = minimum
-    ? readCell(atY(rows, minimum.y), 365, 462, 'MINIMUM')
-    : 0
-
   return { subtotal, finalTotal, taxesArs, previousCreditArs, minimumPaymentArs }
 }
 

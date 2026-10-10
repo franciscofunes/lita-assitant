@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'src/lib/financialScope.ts'
+      - 'src/app/api/chat/route.ts'
       - 'src/lib/financialPeriods.ts'
       - 'src/lib/transactionMarkdownWizard.ts'
       - 'src/components/TransactionMarkdownWizard.tsx'
@@ -14,6 +15,7 @@ on:
     branches: [main]
     paths:
       - 'src/lib/financialScope.ts'
+      - 'src/app/api/chat/route.ts'
       - 'src/lib/financialPeriods.ts'
       - 'src/lib/transactionMarkdownWizard.ts'
       - 'src/components/TransactionMarkdownWizard.tsx'

@@ -17,12 +17,54 @@ const financeSubjects = [
 ]
 const greetings = /^(?:hola|buenas|buen\s+d[ií]a|buenas\s+tardes|buenas\s+noches)[!¡.\s]*$/i
 
+// LTC exports can contain many positions or transactions. Only recognized
+// financial report formats may exceed the short-chat threshold.
+export const MAX_LTC_FINANCIAL_PROMPT_CHARS = 32000
+const MAX_SHORT_FINANCIAL_QUESTION_CHARS = 1500
+
+const ltcFinancialExports = [
+  {
+    header: /^# Portfolio LTC [—-] contexto para an[aá]lisis LLM\s*$/im,
+    markers: [/^## Totales por moneda\s*$/im, /^## Posiciones\s*$/im, /^## Pedido de investigaci[oó]n y an[aá]lisis\s*$/im],
+    request: /^## Pedido de investigaci[oó]n y an[aá]lisis\s*$/im,
+  },
+  {
+    header: /^# LTC [—-] Transacciones [·-] contexto para Lita\s*$/im,
+    markers: [/^## Reglas del an[aá]lisis\s*$/im, /^## Movimientos\s*$/im, /^## Pedido para Lita\s*$/im],
+    request: /^## Pedido para Lita\s*$/im,
+  },
+]
+
+const recognizedFinancialExportRequest = (text: string): string | null => {
+  // A complete LTC export with a matching first line and required sections.
+  for (const format of ltcFinancialExports) {
+    const firstLine = text.split(/\r?\n/, 1)[0]
+    if (!format.header.test(firstLine) || !format.markers.every((marker) => marker.test(text))) continue
+    const index = text.search(format.request)
+    if (index < 0) continue
+    return text.slice(index)
+  }
+  return null
+}
+
 export const assessFinancialScope = (text: unknown): 'allowed' | 'greeting' | 'denied' => {
-  if (typeof text !== 'string' || text.length > 1500) return 'denied'
+  if (typeof text !== 'string' || text.length > MAX_LTC_FINANCIAL_PROMPT_CHARS) return 'denied'
   const cleaned = text.trim()
   if (!cleaned) return 'denied'
   if (greetings.test(cleaned)) return 'greeting'
-  if (outOfScope.some((pattern) => pattern.test(cleaned))) return 'denied'
-  if (!financeSubjects.some((pattern) => pattern.test(cleaned))) return 'denied'
-  return 'allowed'
+
+  if (cleaned.length <= MAX_SHORT_FINANCIAL_QUESTION_CHARS) {
+    if (outOfScope.some((pattern) => pattern.test(cleaned))) return 'denied'
+    return financeSubjects.some((pattern) => pattern.test(cleaned)) ? 'allowed' : 'denied'
+  }
+
+  const request = recognizedFinancialExportRequest(cleaned)
+  if (!request) return 'denied'
+
+  // Dangerous role/prompt override phrases and markup remain forbidden anywhere.
+  // Other off-topic keywords in asset names or financial URLs are reference data,
+  // so evaluate those only in the report's actual instruction/request section.
+  if (outOfScope.slice(2).some((pattern) => pattern.test(cleaned))) return 'denied'
+  if (outOfScope.slice(0, 2).some((pattern) => pattern.test(request))) return 'denied'
+  return financeSubjects.some((pattern) => pattern.test(request)) ? 'allowed' : 'denied'
 }

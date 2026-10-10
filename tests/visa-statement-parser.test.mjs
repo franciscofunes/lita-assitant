@@ -373,3 +373,45 @@ test('Santander does not confuse a payment on a neighboring printed row with pri
     /UNSUPPORTED_PDF_LAYOUT/,
   )
 })
+
+
+test('Santander credit uses unique printed label, not arbitrary PDF.js amount coordinates', () => {
+  const sample = anchoredSantander()
+  const credit = sample[1].find((s) => /Saldo en pesos/.test(s.text))
+  assert.ok(credit)
+  // PDF.js text-item origin can differ from the visible printed location.
+  credit.x = 220
+  credit.y -= 30
+  // Distractor: another negative amount in the RG-5617 row must be ignored.
+  sample[1].push({ text: 'menos 5,00 pesos', x: 404, y: 443 })
+  const parsed = parseVisaTextPages(pages, 'e'.repeat(64), sample)
+  assert.equal(parsed.statement.previousCreditArs, '-5.00')
+  assert.deepEqual(parsed.statement.reconciliation, { ARS: true, USD: true })
+})
+
+test('Santander prior credit accepts label/amount fragments, including split semantic heading', () => {
+  const sample = anchoredSantander()
+  sample[1] = sample[1].filter((s) => !/Saldo en pesos/.test(s.text))
+  sample[1].push(
+    { text: 'Saldo en', x: 404, y: 398 },
+    { text: 'pesos.', x: 432, y: 397 },
+    { text: 'Menos', x: 456, y: 398 },
+    { text: '5,00.', x: 478, y: 397 },
+  )
+  const result = parseVisaTextPages(pages, 'd'.repeat(64), sample)
+  assert.equal(result.statement.previousCreditArs, '-5.00')
+  sample[1].find((s) => s.text === '5,00.').text = '6,00.'
+  assert.throws(() => parseVisaTextPages(pages, 'c'.repeat(64), sample),
+    /STATEMENT_RECONCILIATION_FAILED/)
+})
+
+test('Santander fails closed without a uniquely labelled bank credit, even with matching nearby negative amounts', () => {
+  const noCredit = anchoredSantander()
+  noCredit[1] = noCredit[1].filter((s) => !/Saldo en pesos/.test(s.text))
+  noCredit[1].push({ text: 'menos 5,00 pesos', x: 403, y: 397 })
+  assert.throws(() => parseSantanderPositionedTotals(noCredit), /UNSUPPORTED_PDF_LAYOUT/)
+
+  const duplicate = anchoredSantander()
+  duplicate[1].push({text: 'Saldo en pesos. Menos 5,00.', x: 504, y: 350})
+  assert.throws(() => parseSantanderPositionedTotals(duplicate), /UNSUPPORTED_PDF_LAYOUT/)
+})

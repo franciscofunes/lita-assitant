@@ -393,39 +393,51 @@ export function parseSantanderPositionedTotals(positions: Positioned[][]) {
   const taxesArs = taxes ? currencyValue(taxes, 365, 462, 'TAX') : 0
   const minimumPaymentArs = currencyValue(minimum, 365, 462, 'MINIMUM')
 
+  // A printed prior-balance credit has its own semantic label:
+  // "Saldo en pesos. Menos 9.084,00". PDF.js can split / move this text to
+  // an unrelated baseline or x position. Do not read a generic "menos N"
+  // nearby: that can be a payment or a different charge.
   let previousCreditArs = 0
+  let priorBalanceSections = 0
+  const creditPattern = /Saldo\s+en\s+pesos\s*\.?\s*Menos\s+((?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})(?!\d)/i
   for (const page of positions) {
     const rows = rowsOf(page)
     const previous = rows.find((row) => /Saldo\s+del\s+resumen\s+anterior/i.test(row.label))
     if (!previous) continue
-
-    // PDF.js may place bold left-column labels and the right-column credit
-    // on separate text baselines. Grouping the entire page by a single row
-    // previously dropped this value despite both printed cells being present.
-    // Read ONLY the verified ARS credit column near the bank's prior-balance
-    // label (not other negative payments printed on this page).
-    const nearLabel = page.filter((span) =>
-      span.x >= 365 && span.x < 462 &&
-      Math.abs(span.y - previous.y) <= 18,
-    ).sort((a, b) => a.x - b.x)
-    let adjustment = nearLabel.map((span) => span.text).join(' ')
-    if (!/Menos/i.test(adjustment)) {
-      // Alternative: PDF.js split the right cell into its own text baseline.
-      // Anchor by its printed "Saldo en pesos" label and require proximity
-      // to the left label so a prior payment cannot be mistaken for a credit.
-      const rightRows = rowsOf(page.filter((span) => span.x >= 365 && span.x < 462))
-      const candidates = rightRows.filter((row) => {
-        const joined = row.items.map((span) => span.text).join(' ')
-        return Math.abs(row.y - previous.y) <= 22 &&
-          /Saldo\s+en\s+pesos/i.test(joined) && /Menos/i.test(joined)
-      })
-      if (candidates.length !== 1) return layoutError('PREVIOUS_CREDIT_LABEL')
-      adjustment = candidates[0].items.map((span) => span.text).join(' ')
+    priorBalanceSections += 1
+    if (priorBalanceSections !== 1) return layoutError('PREVIOUS_CREDIT_AMBIGUOUS')
+    // Direct, fully labelled cell: strongest evidence, independent of x/y.
+    const matches = page.map((span) => creditPattern.exec(normalize(span.text)))
+      .filter((match): match is RegExpExecArray => match !== null)
+    if (matches.length > 1) return layoutError('PREVIOUS_CREDIT_AMBIGUOUS')
+    let printed = matches.length === 1 ? matches[0][1] : ''
+    if (!printed) {
+      // Split-font PDF.js cells: start with the unique printed label and join
+      // its nearby fragments, without requiring the same baseline as the
+      // far-left "Saldo del resumen anterior" heading.
+      const anchors = page.filter((span) => /Saldo\s+en\s+pesos/i.test(span.text))
+      if (anchors.length > 1) return layoutError('PREVIOUS_CREDIT_AMBIGUOUS')
+      if (anchors.length === 1) {
+        const tagged = anchors[0]
+        const nearby = page.filter((span) =>
+          Math.abs(span.y - tagged.y) <= 18 && span.x >= tagged.x - 4
+        ).sort((a, b) => a.x - b.x)
+        const joined = normalize(nearby.map((span) => span.text).join(' '))
+        printed = creditPattern.exec(joined)?.[1] || ''
+      }
+      if (!printed) {
+        // Some PDF renderers split even "Saldo en pesos" into two spans.
+        // Reconstruct a small area around the ORIGINAL prior-balance heading,
+        // while still requiring the *complete* unique semantic credit label.
+        const band = page.filter((span) => Math.abs(span.y - previous.y) <= 22)
+          .sort((a, b) => a.x - b.x)
+        printed = creditPattern.exec(normalize(band.map((span) => span.text).join(' ')))?.[1] || ''
+      }
     }
-    const matches = Array.from(adjustment.matchAll(numeric))
-    if (matches.length !== 1) return layoutError('PREVIOUS_CREDIT_CELL')
-    previousCreditArs = -cents(decimal(matches[0][0]))
-    break
+    if (!printed) return layoutError('PREVIOUS_CREDIT_LABEL')
+    const credit = cents(decimal(printed))
+    if (!Number.isSafeInteger(credit) || credit <= 0) return layoutError('PREVIOUS_CREDIT_CELL')
+    previousCreditArs = -credit
   }
   return { subtotal, finalTotal, taxesArs, previousCreditArs, minimumPaymentArs }
 }

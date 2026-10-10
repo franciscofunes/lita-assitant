@@ -68,3 +68,16 @@ test('strips explicit reasoning tags without removing final answer', () => {
   assert.equal(sanitizeAssistantOutput('4. Plan the Response Structure:\n- I need to extract per-asset data'), null)
   assert.equal(sanitizeAssistantOutput('**Portfolio**: 100 USD; tasa no verificada.'), '**Portfolio**: 100 USD; tasa no verificada.')
 })
+
+test('blocks English-dominant final answers from weak providers', () => {
+  const english = '**Overview:** The portfolio has eight positions and the total balance is 105000 USD. We should verify the rates before making changes.'
+  assert.equal(sanitizeAssistantOutput(english), null)
+  assert.equal(sanitizeAssistantOutput('There are several assets in the portfolio. The following analysis explains what we should do.'), null)
+})
+
+test('allows Spanish analysis with bank names, technical fields and English terminology', () => {
+  const spanish = '**Resumen:** El portfolio registra 8 posiciones con saldo en USD. La tasa registrada no fue verificada con una fuente oficial reciente.'
+  assert.equal(sanitizeAssistantOutput(spanish), spanish)
+  const mixed = 'El activo The Savings Bank tiene saldo de 100 USD. Revisá la tasa antes de tomar decisiones. LTC Asset Update: no corresponde sin datos verificables.'
+  assert.equal(sanitizeAssistantOutput(mixed), mixed)
+})

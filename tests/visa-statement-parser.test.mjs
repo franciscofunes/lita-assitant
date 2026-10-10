@@ -279,3 +279,55 @@ test('Santander refuses tampered final balance or missing currency cells', () =>
   assert.throws(() => parseVisaTextPages(pages, '9'.repeat(64), missing),
     /UNSUPPORTED_PDF_LAYOUT/)
 })
+
+
+test('Santander footer accepts PDF.js split label fragments without bypassing reconciliation', () => {
+  const positions = anchoredSantander()
+  // PDF.js may split bank labels and amounts across individual font runs
+  // with slightly different y origins on the same printed row.
+  const footer = positions[5]
+  const subtotal = footer.find((s) => s.text.startsWith('Subtotal de'))
+  const total = footer.find((s) => s.text === 'Total a pagar')
+  const tax = footer.find((s) => s.text.startsWith('Db.rg 5617'))
+  positions[5] = footer.filter((s) => s !== subtotal && s !== total && s !== tax)
+  positions[5].push(
+    { text: 'Subtotal', x: 103, y: 680 },
+    { text: 'de titular', x: 163, y: 679 },
+    { text: 'Total', x: 54, y: 503 },
+    { text: 'a pagar', x: 106, y: 502 },
+    { text: 'Db.rg', x: 103, y: 568 },
+    { text: '5617 30%', x: 146, y: 567 },
+  )
+  const prior = positions[1].find((s) => s.text.startsWith('Saldo del resumen anterior'))
+  positions[1] = positions[1].filter((s) => s !== prior)
+  positions[1].push(
+    { text: 'Saldo del', x: 53, y: 398 },
+    { text: 'resumen anterior *', x: 105, y: 397 },
+  )
+  const expected = parseSantanderPositionedTotals(positions)
+  assert.deepEqual(expected, {
+    subtotal: { ARS: 10000, USD: 2000 },
+    finalTotal: { ARS: 10500, USD: 2000 },
+    taxesArs: 1000,
+    previousCreditArs: -500,
+    minimumPaymentArs: 2000,
+  })
+  const parsed = parseVisaTextPages(pages, 'a'.repeat(64), positions)
+  assert.equal(parsed.items.length, 2)
+  assert.deepEqual(parsed.statement.reconciliation, { ARS: true, USD: true })
+})
+
+test('Santander rejects duplicated or missing currency cells in the footer', () => {
+  const positions = anchoredSantander()
+  positions[5].push({text: '999,99', x: 420, y: 680})
+  assert.throws(
+    () => parseVisaTextPages(pages, 'a'.repeat(64), positions),
+    /UNSUPPORTED_PDF_LAYOUT/,
+  )
+  const missing = anchoredSantander()
+  missing[5] = missing[5].filter((s) => !/Subtotal en dolares/.test(s.text))
+  assert.throws(
+    () => parseVisaTextPages(pages, 'a'.repeat(64), missing),
+    /UNSUPPORTED_PDF_LAYOUT/,
+  )
+})

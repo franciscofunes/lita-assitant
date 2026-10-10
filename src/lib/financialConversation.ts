@@ -35,6 +35,28 @@ const privateThoughtMarkers = [
   /(?:^|\n)\s*(?:analysis|internal reasoning|chain of thought)\s*:/i,
 ]
 
+// Some providers send apparently final text in English despite Spanish-only
+// instructions. Reject predominantly English prose rather than showing the
+// user an untranslated answer; allow financial acronyms, English account
+// names, field identifiers and occasional quoted English terms.
+const englishWords = /\b(?:the|this|that|these|those|and|but|because|which|from|with|for|are|was|will|should|would|need|have|there|about|your|you|please|based|provided|following|first|next|also|some|only|however|although|then|before|after|each|must|them|their|here|can|into|does|cannot)\b/gi
+const spanishWords = /\b(?:el|la|los|las|de|del|en|y|que|con|para|por|una|un|est[aá]|est[aá]n|son|seg[uú]n|datos|saldo|tasa|ganancia|cuenta|inversi[oó]n|moneda|registrad[ao]|vigente|aportes|retiros|rendimiento|resumen|cada|sin|hay|tiene|verificar|debe|no|se|pero|como|m[aá]s|porque|si|fuente|disponible)\b/gi
+const englishPhrases = /\b(?:there (?:is|are)|i (?:need|will|should|would|have|can)|we (?:need|will|should|have)|the (?:portfolio|analysis|data|result|user|answer|following|report|response)|let['’]s|in order to|based on the)\b/i
+
+export const isEnglishDominantAnswer = (text: string): boolean => {
+  const prose = text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/(?:annualRate|sourceCheckedAt|rateVerifiedAt|LTC Asset Update)/g, ' ')
+  const english = (prose.match(englishWords) || []).length
+  const spanish = (prose.match(spanishWords) || []).length
+  return english >= 4 && (
+    (englishPhrases.test(prose) && english > spanish) ||
+    (english >= 7 && english >= spanish * 2 + 3)
+  )
+}
+
 export const sanitizeAssistantOutput = (raw: string): string | null => {
   // Buffer until the provider completes so internal reasoning cannot leak in
   // the first streamed token. Some OpenAI-compatible providers put <think>
@@ -44,7 +66,7 @@ export const sanitizeAssistantOutput = (raw: string): string | null => {
     .trim()
   if (/<\s*(?:think|analysis|reasoning)\b/i.test(answer)) return null
   answer = answer.replace(/^(?:#{1,3}\s*)?(?:final answer|respuesta final)\s*:?\s*/i, '').trim()
-  if (!answer || privateThoughtMarkers.some((pattern) => pattern.test(answer))) return null
+  if (!answer || privateThoughtMarkers.some((pattern) => pattern.test(answer)) || isEnglishDominantAnswer(answer)) return null
   return answer
 }
 

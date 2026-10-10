@@ -325,6 +325,77 @@ export function santanderPositionedCounts(positionedPages: Positioned[][]) {
   }))
 }
 
+
+/**
+ * The digital Santander statement renders summary amounts in *separate*
+ * PDF text fragments from their labels. Reconcile against amounts in printed
+ * ARS/USD columns rather than requiring a single concatenated text row.
+ *
+ * No user data or numeric values are logged. Unknown layouts fail closed.
+ */
+export function parseSantanderPositionedTotals(positions: Positioned[][]) {
+  const numeric = /-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}/
+  const rows = positions.find((spans) =>
+    spans.some((s) => /Subtotal de\b/i.test(s.text)) &&
+    spans.some((s) => /Total a pagar/i.test(s.text)),
+  )
+  // Preserve support for text-only synthetic fixtures and future templates.
+  if (!rows) return null
+
+  const findAnchor = (spans: Positioned[], pattern: RegExp) =>
+    spans.find((s) => pattern.test(s.text))
+  const atY = (spans: Positioned[], y: number) =>
+    spans.filter((s) => Math.abs(s.y - y) <= 9)
+  const readCell = (spans: Positioned[], xMin: number, xMax: number, context: string): number => {
+    const values = spans.filter((s) => s.x >= xMin && s.x < xMax && numeric.test(s.text))
+    if (values.length !== 1) {
+      const failure = new Error('UNSUPPORTED_PDF_LAYOUT')
+      failure.name = 'SANTANDER_' + context + '_CELL'
+      throw failure
+    }
+    const match = numeric.exec(values[0].text)
+    if (!match) throw new Error('UNSUPPORTED_PDF_LAYOUT')
+    return cents(decimal(match[0]))
+  }
+  const readCurrencyPair = (pattern: RegExp, label: string) => {
+    const anchor = findAnchor(rows, pattern)
+    if (!anchor) throw santanderLayoutError(label + '_ANCHOR_NOT_FOUND')
+    const matching = atY(rows, anchor.y)
+    return {
+      ARS: readCell(matching, 365, 462, label + '_ARS'),
+      USD: readCell(matching, 462, 575, label + '_USD'),
+    }
+  }
+
+  const subtotal = readCurrencyPair(/Subtotal de\b/i, 'SUBTOTAL')
+  const finalTotal = readCurrencyPair(/Total a pagar/i, 'TOTAL')
+  const taxAnchor = findAnchor(rows, /Db\.rg\s*5617/i)
+  const taxesArs = taxAnchor
+    ? readCell(atY(rows, taxAnchor.y), 365, 462, 'TAX')
+    : 0
+
+  let previousCreditArs = 0
+  for (const page of positions) {
+    const previous = findAnchor(page, /Saldo del resumen anterior/i)
+    if (!previous) continue
+    const band = atY(page, previous.y)
+    const adjustment = band.filter((s) =>
+      s.x >= 365 && s.x < 462 && /[Mm]enos/.test(s.text))
+    if (adjustment.length !== 1) throw santanderLayoutError('PREVIOUS_CREDIT_NOT_FOUND')
+    const value = numeric.exec(adjustment[0].text)
+    if (!value) throw santanderLayoutError('PREVIOUS_CREDIT_NOT_FOUND')
+    previousCreditArs = -cents(decimal(value[0]))
+    break
+  }
+
+  const minimum = findAnchor(rows, /M[ií]nimo a pagar/i)
+  const minimumPaymentArs = minimum
+    ? readCell(atY(rows, minimum.y), 365, 462, 'MINIMUM')
+    : 0
+
+  return { subtotal, finalTotal, taxesArs, previousCreditArs, minimumPaymentArs }
+}
+
 /**
  * This deterministic adapter deliberately supports the uploaded Visa layout.
  * Unknown/scanned layouts fail closed rather than hallucinating line items.
@@ -338,6 +409,7 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string, positi
   if (pages.length < 2 || !pages[0].some((line) => /Resumen\s+Visa/i.test(line))) {
     throw santanderLayoutError('HEADER_NOT_FOUND')
   }
+  const published = positionedPages ? parseSantanderPositionedTotals(positionedPages) : null
   const firstPage = pages[0].join(' ')
   const allDates = firstPage.match(/\b\d{2}\/\d{2}\/\d{2}\b/g) || []
   if (allDates.length < 6) throw santanderLayoutError('BILLING_DATES_NOT_FOUND')
@@ -352,7 +424,7 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string, positi
   const totalUsd = totalsLine
     ? /Total en d[oó]lares\D*([\d.]+,\d{2})/i.exec(totalsLine)?.[1]
     : /U\$S\s*([\d.]+,\d{2})/i.exec(firstPage)?.[1]
-  if (!totalArs || !totalUsd || !close || !due) throw santanderLayoutError('AMOUNTS_OR_DATES_NOT_FOUND')
+  if ((!published && (!totalArs || !totalUsd)) || !close || !due) throw santanderLayoutError('AMOUNTS_OR_DATES_NOT_FOUND')
 
   const parsed: CardLine[] = []
   let lastDate = ''
@@ -402,8 +474,10 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string, positi
   for (const item of parsed) subtotal[item.currency] += cents(Number(item.amount))
   const purchaseTotalMatch = /Subtotal de[^\n]*?Subtotal en pesos\D*([\d.]+,\d{2})\.?\s*Subtotal en d[oó]lares\D*([\d.]+,\d{2})/i.exec(pages.flat().find((line) => /Subtotal de/i.test(line)) || '')
   // Use the bank's published purchase subtotal as the independent check.
-  const expectedArs = purchaseTotalMatch ? cents(decimal(purchaseTotalMatch[1])) : NaN
-  const expectedUsd = purchaseTotalMatch ? cents(decimal(purchaseTotalMatch[2])) : NaN
+  const expectedArs = published ? published.subtotal.ARS
+    : purchaseTotalMatch ? cents(decimal(purchaseTotalMatch[1])) : NaN
+  const expectedUsd = published ? published.subtotal.USD
+    : purchaseTotalMatch ? cents(decimal(purchaseTotalMatch[2])) : NaN
   if (!Number.isFinite(expectedArs) || !Number.isFinite(expectedUsd) ||
     expectedArs !== subtotal.ARS || expectedUsd !== subtotal.USD) {
     throw new Error('STATEMENT_RECONCILIATION_FAILED')
@@ -411,10 +485,12 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string, positi
   const taxLine = pages.flat().find((l) => /Db\.rg\s*5617/i.test(l))
   const tax = taxLine ? extractMoney(taxLine) : null
   const previousCredit = /Saldo del resumen anterior[\s\S]{0,160}?Menos\s*([\d.]+,\d{2})/i.exec(fullText)
-  const previous = previousCredit ? -cents(decimal(previousCredit[1])) : 0
-  const taxes = tax?.currency === 'ARS' ? tax.cents : 0
-  const totalArsCents = cents(decimal(totalArs))
-  const totalUsdCents = cents(decimal(totalUsd))
+  const previous = published ? published.previousCreditArs
+    : previousCredit ? -cents(decimal(previousCredit[1])) : 0
+  const taxes = published ? published.taxesArs
+    : tax?.currency === 'ARS' ? tax.cents : 0
+  const totalArsCents = published ? published.finalTotal.ARS : cents(decimal(totalArs!))
+  const totalUsdCents = published ? published.finalTotal.USD : cents(decimal(totalUsd!))
   if (totalArsCents !== subtotal.ARS + previous + taxes || totalUsdCents !== subtotal.USD) {
     throw new Error('STATEMENT_RECONCILIATION_FAILED')
   }
@@ -428,7 +504,8 @@ export function parseVisaTextPages(pages: string[][], fileSha256: string, positi
       closingDate: close, dueDate: due, period: close.slice(0, 7),
       totals: { ARS: fixed(totalArsCents), USD: fixed(totalUsdCents) },
       purchases: { ARS: fixed(subtotal.ARS), USD: fixed(subtotal.USD) },
-      minimumPaymentArs: minimum ? fixed(cents(decimal(minimum))) : '0.00',
+      minimumPaymentArs: published ? fixed(published.minimumPaymentArs)
+        : minimum ? fixed(cents(decimal(minimum))) : '0.00',
       previousCreditArs: fixed(previous), taxesArs: fixed(taxes),
       reconciliation: { ARS: true, USD: true },
     },

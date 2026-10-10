@@ -100,7 +100,8 @@ REGLAS DE RESPUESTA (PRIORIDAD ALTA):
 - Si faltan totales o contexto relevante, indicá concretamente qué dato falta. Un pago de resumen no equivale a consumos desglosados.
 - Evitá tablas Markdown con celdas vacías y preferí viñetas claras si son menos de 4 categorías.
 - Propuestas LTC Asset Update: generá campos nuevos solo si existe evidencia explícita en los datos aportados. El chat NO escribe en Firestore ni aplica cambios, aunque el usuario apruebe un análisis.
-- Priorizá conclusiones financieras, hallazgos y acciones concretas sobre explicaciones genéricas; sé claro, conciso y riguroso.`
+- Priorizá conclusiones financieras, hallazgos y acciones concretas sobre explicaciones genéricas; sé claro, conciso y riguroso.
+
 <financial-context>
 ${clipped}
 </financial-context>`,

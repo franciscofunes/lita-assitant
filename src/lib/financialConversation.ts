@@ -1,4 +1,4 @@
-import { assessFinancialScope, MAX_LTC_FINANCIAL_PROMPT_CHARS } from './financialScope'
+import { assessFinancialScope, MAX_LTC_FINANCIAL_PROMPT_CHARS } from './financialScope.ts'
 
 export type ConversationMessage = { role: 'user' | 'assistant'; content: string }
 

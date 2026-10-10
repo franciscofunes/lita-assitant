@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Streamdown } from 'streamdown'
 import TransactionMarkdownWizard from '@/components/TransactionMarkdownWizard'
 import { requestedFinancialPeriod } from '@/lib/financialPeriods'
-import { assessFinancialScope, MAX_LTC_FINANCIAL_PROMPT_CHARS } from '@/lib/financialScope'
+import { assessFinancialScope } from '@/lib/financialScope'
 import { sanitizeAssistantOutput } from '@/lib/financialConversation'
 
 type SpendingCategory = {
@@ -329,19 +329,6 @@ export function Chat() {
       parentOriginRef.current = event.origin
       setHostConnected(true)
 
-      // Only LTC's authenticated, trusted parent may prepare a financial
-      // prompt in the composer. This is a draft: the user reviews and sends.
-      if (event.data?.type === 'lita:draft') {
-        const draft = event.data?.payload?.text
-        if (typeof draft === 'string' &&
-          draft.length <= MAX_LTC_FINANCIAL_PROMPT_CHARS &&
-          /^(?:# Portfolio LTC [—-] contexto para an[aá]lisis LLM|# LTC [—-] Transacciones)/i.test(draft)) {
-          setInput(draft)
-          setHistoryOpen(false)
-        }
-        return
-      }
-
       if (event.data?.type === 'lita:theme') {
         if (event.data.payload !== 'dark' && event.data.payload !== 'light') return
         document.documentElement.classList.toggle('dark', event.data.payload === 'dark')
@@ -412,7 +399,7 @@ export function Chat() {
     return () => {
       window.removeEventListener('message', handleParentMessage)
     }
-  }, [allowedParentOrigins, setInput])
+  }, [allowedParentOrigins])
 
   // Standalone LITA follows the OS; embedded LITA follows only the trusted host.
   useEffect(() => {

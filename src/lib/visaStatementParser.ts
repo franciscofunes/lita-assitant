@@ -398,10 +398,30 @@ export function parseSantanderPositionedTotals(positions: Positioned[][]) {
     const rows = rowsOf(page)
     const previous = rows.find((row) => /Saldo\s+del\s+resumen\s+anterior/i.test(row.label))
     if (!previous) continue
-    const adjustment = previous.items
-      .filter((s) => s.x >= 365 && s.x < 462)
-      .map((s) => s.text).join(' ')
-    if (!/Menos/i.test(adjustment)) return layoutError('PREVIOUS_CREDIT_LABEL')
+
+    // PDF.js may place bold left-column labels and the right-column credit
+    // on separate text baselines. Grouping the entire page by a single row
+    // previously dropped this value despite both printed cells being present.
+    // Read ONLY the verified ARS credit column near the bank's prior-balance
+    // label (not other negative payments printed on this page).
+    const nearLabel = page.filter((span) =>
+      span.x >= 365 && span.x < 462 &&
+      Math.abs(span.y - previous.y) <= 18,
+    ).sort((a, b) => a.x - b.x)
+    let adjustment = nearLabel.map((span) => span.text).join(' ')
+    if (!/Menos/i.test(adjustment)) {
+      // Alternative: PDF.js split the right cell into its own text baseline.
+      // Anchor by its printed "Saldo en pesos" label and require proximity
+      // to the left label so a prior payment cannot be mistaken for a credit.
+      const rightRows = rowsOf(page.filter((span) => span.x >= 365 && span.x < 462))
+      const candidates = rightRows.filter((row) => {
+        const joined = row.items.map((span) => span.text).join(' ')
+        return Math.abs(row.y - previous.y) <= 22 &&
+          /Saldo\s+en\s+pesos/i.test(joined) && /Menos/i.test(joined)
+      })
+      if (candidates.length !== 1) return layoutError('PREVIOUS_CREDIT_LABEL')
+      adjustment = candidates[0].items.map((span) => span.text).join(' ')
+    }
     const matches = Array.from(adjustment.matchAll(numeric))
     if (matches.length !== 1) return layoutError('PREVIOUS_CREDIT_CELL')
     previousCreditArs = -cents(decimal(matches[0][0]))

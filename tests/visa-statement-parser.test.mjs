@@ -331,3 +331,45 @@ test('Santander rejects duplicated or missing currency cells in the footer', () 
     /UNSUPPORTED_PDF_LAYOUT/,
   )
 })
+
+
+test('Santander prior-credit cell on a different PDF.js baseline is still independently validated', () => {
+  const positions = anchoredSantander()
+  const printedCredit = positions[1].find((span) => span.text.includes('Saldo en pesos. Menos'))
+  assert.ok(printedCredit)
+  // Previous code grouped text into one row (8pt tolerance) and discarded the
+  // printed bank credit when the right text baseline differed by 13pt.
+  printedCredit.y -= 13
+  const totals = parseSantanderPositionedTotals(positions)
+  assert.equal(totals.previousCreditArs, -500)
+  const result = parseVisaTextPages(pages, 'e'.repeat(64), positions)
+  assert.equal(result.statement.previousCreditArs, '-5.00')
+  assert.deepEqual(result.statement.reconciliation, { ARS: true, USD: true })
+})
+
+test('Santander joins separated right-column credit fragments but refuses a wrong amount', () => {
+  const positions = anchoredSantander()
+  const original = positions[1].find((span) => span.text.includes('Saldo en pesos. Menos'))
+  positions[1] = positions[1].filter((span) => span !== original)
+  positions[1].push(
+    { text: 'Saldo en pesos. Menos', x: 404, y: 387 },
+    { text: '5,00.', x: 437, y: 386 },
+  )
+  const valid = parseVisaTextPages(pages, 'd'.repeat(64), positions)
+  assert.equal(valid.statement.previousCreditArs, '-5.00')
+  positions[1].find((span) => span.text === '5,00.').text = '6,00.'
+  assert.throws(
+    () => parseVisaTextPages(pages, 'c'.repeat(64), positions),
+    /STATEMENT_RECONCILIATION_FAILED/,
+  )
+})
+
+test('Santander does not confuse a payment on a neighboring printed row with prior credit', () => {
+  const positions = anchoredSantander()
+  positions[1] = positions[1].filter((span) => !span.text.includes('Saldo en pesos. Menos'))
+  positions[1].push({ text: 'menos 5,00 pesos', x: 403, y: 360 })
+  assert.throws(
+    () => parseSantanderPositionedTotals(positions),
+    /UNSUPPORTED_PDF_LAYOUT/,
+  )
+})

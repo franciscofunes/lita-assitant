@@ -23,6 +23,7 @@ import { Streamdown } from 'streamdown'
 import TransactionMarkdownWizard from '@/components/TransactionMarkdownWizard'
 import { requestedFinancialPeriod } from '@/lib/financialPeriods'
 import { assessFinancialScope, MAX_LTC_FINANCIAL_PROMPT_CHARS } from '@/lib/financialScope'
+import { sanitizeAssistantOutput } from '@/lib/financialConversation'
 
 type SpendingCategory = {
   category: string
@@ -878,6 +879,10 @@ export function Chat() {
           <div className="space-y-4">
             {messages.map((message, index) => {
               const isUser = message.role === 'user'
+              // Do not re-display leaked reasoning from previously saved chats.
+              const displayContent = isUser ? message.content :
+                sanitizeAssistantOutput(message.content) ||
+                'La respuesta anterior no contenía un resultado final seguro. Podés pedirle a LITA que continúe el análisis.'
               const isStreamingAssistant =
                 isLoading &&
                 index === messages.length - 1 &&
@@ -915,7 +920,7 @@ export function Chat() {
                           caret="circle"
                           isAnimating={isStreamingAssistant}
                         >
-                          {message.content}
+                          {displayContent}
                         </Streamdown>
                         {!isLoading && verifiedSpending &&
                           index === messages.length - 1 &&

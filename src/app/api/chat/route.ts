@@ -226,12 +226,12 @@ export async function POST(req: Request) {
   try {
     body = await req.json()
   } catch {
-    return new Response('Invalid JSON request', { status: 400 })
+    return new Response('La solicitud contiene un JSON inválido.', { status: 400 })
   }
 
   const messages = normalizeMessages(body.messages)
   if (!messages.length) {
-    return new Response('At least one chat message is required', { status: 400 })
+    return new Response('Enviá al menos un mensaje para comenzar la conversación.', { status: 400 })
   }
 
   // Hard, provider-independent scope enforcement. Do not depend on a model
@@ -269,7 +269,7 @@ export async function POST(req: Request) {
 
   const providers = getProviderAttemptOrder()
   if (!providers.length) {
-    return new Response('AI providers are not configured', { status: 503 })
+    return new Response('LITA no tiene proveedores de IA configurados.', { status: 503 })
   }
 
   const attempts: string[] = []
@@ -342,7 +342,7 @@ export async function POST(req: Request) {
     attempts,
   })
 
-  return new Response('AI providers are temporarily unavailable', {
+  return new Response('No pude obtener una respuesta final válida en español. Intentá nuevamente en unos segundos.', {
     status: 503,
     headers: {
       'Retry-After': '5',

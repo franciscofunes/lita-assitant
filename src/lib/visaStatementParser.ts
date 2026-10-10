@@ -434,6 +434,23 @@ export function parseSantanderPositionedTotals(positions: Positioned[][]) {
         printed = creditPattern.exec(normalize(band.map((span) => span.text).join(' ')))?.[1] || ''
       }
     }
+    if (!printed) {
+      // The actual Santander PDF prints the prior balance as
+      // "Saldo del resumen anterior *     -$ 9.084,00     U$S 0,00".
+      // PDF.js may expose this visible bank cell instead of the alternate
+      // accessibility description "Saldo en pesos. Menos 9.084,00".
+      // Only accept an EXPLICITLY NEGATIVE ARS currency cell on the same
+      // printed row as the unique prior-balance label. Never infer credit
+      // by subtracting totals or read other negative purchases/payments.
+      const printedRow = page.filter((span) =>
+        Math.abs(span.y - previous.y) <= 12
+      ).sort((a, b) => a.x - b.x)
+      const printedText = normalize(printedRow.map((span) => span.text).join(' '))
+      const negativeArsPattern = /(?:^|[^\w])-\s*\$\s*((?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})(?!\d)/g
+      const explicitCredits = Array.from(printedText.matchAll(negativeArsPattern))
+      if (explicitCredits.length > 1) return layoutError('PREVIOUS_CREDIT_AMBIGUOUS')
+      if (explicitCredits.length === 1) printed = explicitCredits[0][1]
+    }
     if (!printed) return layoutError('PREVIOUS_CREDIT_LABEL')
     const credit = cents(decimal(printed))
     if (!Number.isSafeInteger(credit) || credit <= 0) return layoutError('PREVIOUS_CREDIT_CELL')

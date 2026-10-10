@@ -170,7 +170,9 @@ export const getConfiguredProviderSummary = async () => {
 
 export const getProviderAttemptOrder = () => {
   const providers = orderedProviders()
-  if (providers.length < 2 || process.env.AI_PROVIDER_STRATEGY === 'ordered') {
+  // Prefer predictable, configured model quality over random provider selection.
+  // Rotating providers is opt-in for operators who explicitly request it.
+  if (providers.length < 2 || process.env.AI_PROVIDER_STRATEGY !== 'round-robin') {
     return providers
   }
 

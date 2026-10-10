@@ -5,6 +5,7 @@ import {
   Bot,
   CheckCircle2,
   DollarSign,
+  FileText,
   History,
   PieChart,
   Plus,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Streamdown } from 'streamdown'
+import TransactionMarkdownWizard from '@/components/TransactionMarkdownWizard'
 import { requestedFinancialPeriod } from '@/lib/financialPeriods'
 import { assessFinancialScope } from '@/lib/financialScope'
 
@@ -261,6 +263,7 @@ export function Chat() {
   const pendingSaveRef = useRef<PendingSave | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [transactionWizardOpen, setTransactionWizardOpen] = useState(false)
   const [activeChatId, setActiveChatId] = useState('')
   const [activeCreatedAt, setActiveCreatedAt] = useState('')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -728,6 +731,17 @@ export function Chat() {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
+            {financialContext?.section === 'transactions' && (
+              <button
+                type="button"
+                onClick={() => setTransactionWizardOpen(true)}
+                aria-label="Preparar transacción con Markdown"
+                title="Preparar transacción con Markdown"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-violet-400/40 bg-violet-500/10 text-violet-700 transition hover:bg-violet-500/20 dark:text-violet-300"
+              >
+                <FileText className="h-4 w-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={startNewChat}
@@ -802,6 +816,13 @@ export function Chat() {
                   </div>
                 </div>
 
+                {financialContext?.section === 'transactions' && (
+                  <button type="button" onClick={() => setTransactionWizardOpen(true)}
+                    className="mt-4 flex w-full items-center justify-between rounded-xl border border-violet-400/40 bg-violet-500/10 px-3.5 py-3 text-left text-sm font-semibold text-violet-800 transition hover:bg-violet-500/15 dark:text-violet-200">
+                    <span>Preparar una transacción con Markdown</span>
+                    <FileText className="h-4 w-4 shrink-0" />
+                  </button>
+                )}
                 <div className="mt-4 grid gap-2">
                   {quickPrompts.map((prompt) => (
                     <button
@@ -1025,6 +1046,16 @@ export function Chat() {
           </button>
         </form>
       </footer>
+
+      {transactionWizardOpen && (
+        <TransactionMarkdownWizard
+          categories={(Array.isArray(financialContext?.categories) ? financialContext.categories : [])
+            .filter((entry): entry is { name: string; isExpense?: boolean } =>
+              Boolean(entry && typeof entry === 'object' && 'name' in entry && typeof entry.name === 'string'))
+            .map((entry) => ({ name: entry.name, isExpense: entry.isExpense === true }))}
+          onClose={() => setTransactionWizardOpen(false)}
+        />
+      )}
 
       {historyOpen && (
         <section className="absolute inset-0 z-40 flex min-h-0 flex-col bg-slate-50 dark:bg-slate-950">

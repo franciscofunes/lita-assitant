@@ -416,13 +416,15 @@ export function parseSantanderPositionedTotals(positions: Positioned[][]) {
       // its nearby fragments, without requiring the same baseline as the
       // far-left "Saldo del resumen anterior" heading.
       const anchors = page.filter((span) => /Saldo\s+en\s+pesos/i.test(span.text))
-      if (anchors.length !== 1) return layoutError('PREVIOUS_CREDIT_LABEL')
-      const tagged = anchors[0]
-      const nearby = page.filter((span) =>
-        Math.abs(span.y - tagged.y) <= 18 && span.x >= tagged.x - 4
-      ).sort((a, b) => a.x - b.x)
-      const joined = normalize(nearby.map((span) => span.text).join(' '))
-      printed = creditPattern.exec(joined)?.[1] || ''
+      if (anchors.length > 1) return layoutError('PREVIOUS_CREDIT_AMBIGUOUS')
+      if (anchors.length === 1) {
+        const tagged = anchors[0]
+        const nearby = page.filter((span) =>
+          Math.abs(span.y - tagged.y) <= 18 && span.x >= tagged.x - 4
+        ).sort((a, b) => a.x - b.x)
+        const joined = normalize(nearby.map((span) => span.text).join(' '))
+        printed = creditPattern.exec(joined)?.[1] || ''
+      }
       if (!printed) {
         // Some PDF renderers split even "Saldo en pesos" into two spans.
         // Reconstruct a small area around the ORIGINAL prior-balance heading,

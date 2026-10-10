@@ -415,3 +415,50 @@ test('Santander fails closed without a uniquely labelled bank credit, even with 
   duplicate[1].push({text: 'Saldo en pesos. Menos 5,00.', x: 504, y: 350})
   assert.throws(() => parseSantanderPositionedTotals(duplicate), /UNSUPPORTED_PDF_LAYOUT/)
 })
+
+
+// Santander's "Saldo del resumen anterior" visually prints an explicitly
+// negative ARS cell. Some PDF extraction engines expose this as "-$ 5,00"
+// rather than the accessibility "Saldo en pesos. Menos 5,00." description.
+test('Santander recognizes the printed negative ARS balance beside its exact label', () => {
+  const positions = anchoredSantander()
+  positions[1] = positions[1].filter((span) => !/Saldo en pesos/.test(span.text))
+  positions[1].push(
+    { text: '-$', x: 402, y: 398 },
+    { text: '5,00', x: 419, y: 398 },
+    { text: 'U$S', x: 506, y: 398 },
+    { text: '0,00', x: 532, y: 398 },
+    // A different negative amount on the neighboring *other* row is a decoy.
+    { text: 'menos 123,00 pesos', x: 402, y: 437 },
+  )
+  assert.equal(parseSantanderPositionedTotals(positions).previousCreditArs, -500)
+  const parsed = parseVisaTextPages(pages, '6'.repeat(64), positions)
+  assert.equal(parsed.statement.previousCreditArs, '-5.00')
+  assert.deepEqual(parsed.statement.reconciliation, { ARS: true, USD: true })
+})
+
+test('Santander rejects modified or ambiguous printed prior credit amounts', () => {
+  const printed = () => {
+    const positions = anchoredSantander()
+    positions[1] = positions[1].filter((span) => !/Saldo en pesos/.test(span.text))
+    positions[1].push(
+      { text: '-$', x: 402, y: 398 },
+      { text: '5,00', x: 419, y: 398 },
+      { text: 'U$S', x: 506, y: 398 },
+      { text: '0,00', x: 532, y: 398 },
+    )
+    return positions
+  }
+  const tampered = printed()
+  tampered[1].find((span) => span.text === '5,00').text = '6,00'
+  assert.throws(() => parseVisaTextPages(pages, '6'.repeat(64), tampered),
+    /STATEMENT_RECONCILIATION_FAILED/)
+  const ambiguous = printed()
+  ambiguous[1].push({ text: '-$ 7,00', x: 441, y: 398 })
+  assert.throws(() => parseSantanderPositionedTotals(ambiguous),
+    /UNSUPPORTED_PDF_LAYOUT/)
+  const notNegative = printed()
+  notNegative[1].find((span) => span.text === '-$').text = '+$'
+  assert.throws(() => parseSantanderPositionedTotals(notNegative),
+    /UNSUPPORTED_PDF_LAYOUT/)
+})

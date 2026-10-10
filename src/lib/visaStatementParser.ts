@@ -361,7 +361,7 @@ export function parseSantanderPositionedTotals(positions: Positioned[][]) {
     // Both the common (single text item) and split-font cases are handled.
     // Financial reconciliation below will independently reject wrong sums.
     const merged = column.map((s) => s.text.trim()).join(' ')
-    const matches = [...merged.matchAll(numeric)]
+    const matches = Array.from(merged.matchAll(numeric))
     if (matches.length !== 1) return layoutError(label + '_CELL')
     return cents(decimal(matches[0][0]))
   }
@@ -402,7 +402,7 @@ export function parseSantanderPositionedTotals(positions: Positioned[][]) {
       .filter((s) => s.x >= 365 && s.x < 462)
       .map((s) => s.text).join(' ')
     if (!/Menos/i.test(adjustment)) return layoutError('PREVIOUS_CREDIT_LABEL')
-    const matches = [...adjustment.matchAll(numeric)]
+    const matches = Array.from(adjustment.matchAll(numeric))
     if (matches.length !== 1) return layoutError('PREVIOUS_CREDIT_CELL')
     previousCreditArs = -cents(decimal(matches[0][0]))
     break

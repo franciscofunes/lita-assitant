@@ -1,0 +1,47 @@
+name: Documentation integrity
+on:
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'docs/**'
+      - '.github/workflows/docs-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'docs/**'
+      - '.github/workflows/docs-check.yml'
+jobs:
+  docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate README and architecture Markdown
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          paths = [Path('README.md'), Path('docs/architecture.md'), Path('docs/development.md')]
+          failures = []
+          for path in paths:
+              if not path.is_file():
+                  failures.append(f'Missing required file: {path}')
+                  continue
+              data = path.read_text(encoding='utf-8')
+              fences = re.findall(r'^~~~([A-Za-z0-9_-]*)\\s*$', data, re.M)
+              if len(fences) % 2:
+                  failures.append(f'Unclosed code fence in {path}')
+              if '~~~mermaid' not in data:
+                  failures.append(f'Missing Mermaid diagram in {path}')
+              for link in re.findall(r'\\]\\(([^)]+)\\)', data):
+                  dest = link.split('#', 1)[0]
+                  if not dest or dest.startswith(('https://', 'http://', 'mailto:', '/')):
+                      continue
+                  target = path.parent / dest
+                  if not target.is_file():
+                      failures.append(f'{path}: broken relative link to {link}')
+          if failures:
+              raise SystemExit('\\n'.join(failures))
+          print('Documentation links and Mermaid fences verified')
+          PY

@@ -29,12 +29,12 @@ jobs:
                   failures.append(f'Missing required file: {path}')
                   continue
               data = path.read_text(encoding='utf-8')
-              fences = re.findall(r'^~~~([A-Za-z0-9_-]*)\\s*$', data, re.M)
+              fences = re.findall(r'^~~~([A-Za-z0-9_-]*)\s*$', data, re.M)
               if len(fences) % 2:
                   failures.append(f'Unclosed code fence in {path}')
               if '~~~mermaid' not in data:
                   failures.append(f'Missing Mermaid diagram in {path}')
-              for link in re.findall(r'\\]\\(([^)]+)\\)', data):
+              for link in re.findall(r'\]\(([^)]+)\)', data):
                   dest = link.split('#', 1)[0]
                   if not dest or dest.startswith(('https://', 'http://', 'mailto:', '/')):
                       continue
@@ -42,6 +42,6 @@ jobs:
                   if not target.is_file():
                       failures.append(f'{path}: broken relative link to {link}')
           if failures:
-              raise SystemExit('\\n'.join(failures))
+              raise SystemExit('\n'.join(failures))
           print('Documentation links and Mermaid fences verified')
           PY

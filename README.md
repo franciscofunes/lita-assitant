@@ -1,114 +1,118 @@
-# AI LITA BOT
+# LITA — Financial AI and Statement Analysis for LTC
 
-LITA is the AI sidecar for **Lleva Tus Cuentas**. It is a Next.js application deployed on Vercel and embedded inside the React SPA.
+**A focused Next.js companion service for [Lleva Tus Cuentas](https://github.com/franciscofunes/lleva-tus-cuentas).**
 
-## Architecture
+[Live LTC app](https://lleva-tus-cuentas.netlify.app/) · [Architecture](docs/architecture.md) · [Development & operations](docs/development.md) · [AI provider notes](docs/ai-providers.md) · [PDF analyzer](docs/card-statement-pdf.md)
 
-```text
-Lleva Tus Cuentas (React / Netlify)
-        |
-        | postMessage: lita:context
-        v
-LITA iframe (Next.js / Vercel)
-        |
-        | /api/chat
-        v
-Provider pool
-  ├─ Vercel AI Gateway
-  ├─ Groq
-  ├─ OpenRouter
-  ├─ NVIDIA NIM
-  └─ Google AI Studio
-```
+Lita is a **Next.js 13 / React 18 / TypeScript** app deployed on **Vercel**. It is embedded as an iframe inside LTC's React/Netlify application. It provides **bounded financial question answering**, configurable **AI provider fallback**, a transaction Markdown helper and a **deterministic, authenticated digital Visa PDF analyzer**.
 
-The SPA sends the current **Transactions** or **Portfolio** context to the iframe with `postMessage`. LITA sends that context with each chat request, so there is no cross-origin `no-cors` cache or temporary server state to synchronize.
+The **application UI and financial answers are Spanish-language** by design; all architecture and developer documentation here is in English.
 
-The API route treats financial context as untrusted data and adds finance-specific instructions: do not invent missing values, do not mix currencies without an explicit FX rate, and distinguish balance changes from investment gains.
+## What runs where?
 
-## Provider resilience
+~~~mermaid
+flowchart LR
+    Person["User"] --> LTC["LTC SPA<br/>Netlify + Firebase Auth"]
+    LTC -- "postMessage: context / history / theme" --> Frame["Lita iframe<br/>Next.js client"]
+    Frame -- "messages + context" --> Chat["POST /api/chat"]
+    Chat --> Policy["Financial scope + answer checks"]
+    Policy --> Router["Provider routing / fallback"]
+    Router --> Models["AI providers"]
+    LTC -- "PDF + Firebase ID token" --> PDF["POST /api/card-statements/analyze"]
+    PDF --> Verify["Verify token + PDF signature"]
+    Verify --> Parse["PDF.js positioned-text parser"]
+    Parse -- "reconciled draft" --> LTC
+    LTC --> DB[("Cloud Firestore<br/>user-owned history and statements")]
+~~~
 
-The provider pool supports two strategies:
+Lita **does not own or modify** the customer's transaction/portfolio data, and `/api/chat` is not a privileged Firestore API. **LTC** loads and saves its own `users/{uid}/litaChats` conversation history. The PDF endpoint is a separate, token-verified processing path; only the reviewed output is saved by LTC.
 
-- `round-robin` — rotates which configured provider is attempted first.
-- `ordered` — always follows `AI_PROVIDER_ORDER`.
+## Capabilities and non-goals
 
-If a provider times out, rejects the request, is rate-limited, or is unavailable, LITA moves to the next configured provider. A successful streaming response is returned immediately.
+| Area | Implemented behavior | Boundary |
+| --- | --- | --- |
+| Chat | Budgeted financial context for Transactions/Portfolio, follow-up-aware conversation and Spanish output validation | **No automatic portfolio writes, general-purpose agent tools, or live web research** |
+| Provider resilience | Ordered or instance-local round-robin attempts; fallback across configured gateways/providers | Availability, costs and third-party retention depend on provider configuration |
+| Markdown | Streamdown rendering plus LTC transaction Markdown wizard | Text suggestions are not database mutations |
+| Conversation history | Receives and displays user-specific history through the parent iframe protocol | Firestore persistence is performed by LTC |
+| Statement PDFs | Authenticated up-to-4-MiB digital Visa parsing, financial reconciliation and structured JSON preview | **No OCR, scanned/unrecognized layouts fail closed, no bank PDF is sent to the chat models** |
+| Diagnostics | `GET /api/status` reports configured providers and readiness | No API keys or secrets returned |
 
-Vercel AI Gateway can also use `AI_GATEWAY_FALLBACK_MODELS`, giving LITA a second layer of model fallback before the application moves to another provider.
+## API endpoints
 
-> The round-robin cursor is intentionally best-effort and stateless. Vercel Functions can have multiple warm instances, so this distributes traffic without requiring Redis. If strict global round-robin becomes necessary, move the cursor to a shared store.
+| Endpoint | Method | Client | Purpose |
+| --- | --- | --- | --- |
+| `/api/chat` | POST | Lita UI via `useChat` | Validates financial scope/context, chooses a provider, returns validated assistant text |
+| `/api/status` | GET | Health/diagnostics | `{ready, providers}` metadata only; no credentials |
+| `/api/card-statements/analyze` | OPTIONS, POST | Authenticated LTC client | Restricted-origin multipart PDF analysis with Firebase ID token verification |
 
-## Free-provider strategy
+**Security distinction:** `/api/chat` checks that the request is in scope and includes relevant LTC financial context, but it **does not independently verify a Firebase ID token** in the current implementation. Treat caller-supplied context as untrusted, limit exposure and never make this route a data-write endpoint. `/api/card-statements/analyze` **does** verify signed Firebase tokens cryptographically and derives the UID from the token.
 
-The provider list was designed around OpenAI-compatible free tiers catalogued by [itsfree.ai](https://itsfree.ai/), plus Vercel AI Gateway.
+## Provider routing
 
-Free quotas and model lists change frequently. Do not hard-code a model because it is free today; configure model IDs through Vercel environment variables and periodically re-check the provider's official documentation.
+~~~mermaid
+flowchart TD
+    Request["Validated financial request"] --> Pick["Attempt order"]
+    Pick --> P1["Configured provider 1"]
+    P1 --> OK{"HTTP success and safe Spanish final text?"}
+    OK -- "Yes" --> Reply["Respond with validated text"]
+    OK -- "No / timeout / rate limit" --> More{"Another configured provider?"}
+    More -- "Yes" --> P2["Try next provider"]
+    P2 --> OK
+    More -- "No" --> Failed["Return retryable 503"]
+~~~
 
-For real personal financial data, review each provider's retention/training policy before enabling it. A provider being free or OpenAI-compatible does **not** mean it is appropriate for sensitive production data.
+The provider pool includes Vercel AI Gateway, Groq, OpenRouter, NVIDIA NIM, Google AI Studio (Gemini-compatible), and optional legacy OpenAI-compatible routes. Configure only providers whose terms suit the sensitivity of your financial data. `AI_PROVIDER_STRATEGY=round-robin` changes the starting attempt within an instance; this is **not** globally coordinated across Vercel functions. AI Gateway additionally supports a configured fallback model list.
 
-## Environment variables
+Lita buffers and inspects the provider's final output to suppress reasoning tags, non-final content and English-dominant responses. The API then returns the accepted answer as a response stream; it does **not** relay unvalidated raw provider tokens to the browser.
 
-Copy `.env.example` and configure only the providers you want. Providers without both an API key/token and model are ignored.
+## Getting started
 
-### Vercel configuration checklist
+**Requirements:** Node.js **24.x** (see `package.json`), npm, and at least one configured AI provider or an AI Gateway model with Vercel OIDC authentication.
 
-The legacy `OPENAI_API_KEY` variable by itself is **not** consumed by the new provider router. At least one complete provider configuration is required.
+~~~bash
+git clone https://github.com/franciscofunes/lita-assitant.git
+cd lita-assitant
+npm ci
+cp .env.example .env.local
+# Fill in one supported provider's model + server-side key if required.
+npm run dev -- -p 3005
+~~~
 
-For AI Gateway on Vercel, the minimum is:
+LTC uses `http://localhost:3005` for its local iframe. Add `http://localhost:3000` to `NEXT_PUBLIC_LITA_PARENT_ORIGINS` for the LTC development origin. On Vercel, configure provider keys and `FIREBASE_PROJECT_ID` as **server-only** environment variables; the project ID must match LTC's `REACT_APP_PROJECT_ID` for PDF token validation.
 
-```bash
-AI_GATEWAY_MODEL=<model-id>
-```
+For production on AI Gateway, an `AI_GATEWAY_MODEL` can use Vercel OIDC auth when deployed with the necessary identity. Outside that environment, supply a valid Gateway key. Configure other providers' `*_MODEL` plus `*_API_KEY` together. Never commit `.env.local`.
 
-The deployment can use Vercel's `VERCEL_OIDC_TOKEN` automatically, so `AI_GATEWAY_API_KEY` is optional on Vercel.
+## Test and build
 
-Recommended routing controls:
+~~~bash
+node --test tests/finance-scope.test.mjs tests/financial-conversation.test.mjs tests/transaction-wizard.test.mjs
+node --test tests/visa-statement-parser.test.mjs tests/pdfjs-worker-smoke.test.cjs
+npm run lint
+npm run build
+~~~
 
-```bash
-AI_PROVIDER_STRATEGY=round-robin
-AI_PROVIDER_ORDER=gateway,groq,openrouter,nvidia,google
-AI_PROVIDER_TIMEOUT_MS=12000
-LITA_MAX_OUTPUT_TOKENS=700
-LITA_MAX_HISTORY_MESSAGES=20
-LITA_MAX_CONTEXT_CHARS=24000
-NEXT_PUBLIC_LITA_PARENT_ORIGINS=https://lleva-tus-cuentas.netlify.app,http://localhost:3000
-```
+These commands mirror the scope and PDF regression areas covered by GitHub workflows. Follow the [operations runbook](docs/development.md) when releasing; **a Vercel preview build is not proof that production domains or Firebase token configuration have changed**.
 
-`GET /api/status` reports whether at least one provider is configured and returns provider IDs/labels only; it never returns credentials.
+## Source map
 
-Recommended production starting point:
+| Location | Responsibility |
+| --- | --- |
+| `src/app/page.tsx` / `src/components/Chat.tsx` | Embedded chat screen, parent protocol, Markdown rendering, history UI |
+| `src/app/api/chat/route.ts` | Scope checking, context budgeting, provider selection, response validation |
+| `src/lib/financialScope.ts` / `financialConversation.ts` | Allowed finance topics, follow-ups and output sanitization |
+| `src/lib/aiProviders.ts` | AI provider configuration, order and fallback |
+| `src/app/api/card-statements/analyze/route.ts` | Authenticated PDF request and structured response |
+| `src/lib/statementAuth.ts` / `visaStatementParser.ts` | Signed Firebase token verification and deterministic reconciliation |
+| `src/lib/statementTemporaryStorage.ts` | **Opt-in** temporary Edge Store upload and cleanup |
+| `tests/` and `.github/workflows/` | PII-free contract and regression checks |
 
-1. Vercel AI Gateway as the primary path.
-2. One or two direct OpenAI-compatible providers as capacity/rate-limit fallback.
-3. OpenRouter free routing as a last-resort pool if its current limits and data policy fit the application.
+## Documentation
 
-On Vercel, AI Gateway can authenticate with the deployment's `VERCEL_OIDC_TOKEN`, so no AI Gateway secret is required in source code.
+- [Architecture and end-to-end diagrams](docs/architecture.md)
+- [Local development, deployment, privacy, troubleshooting](docs/development.md)
+- [AI provider setup](docs/ai-providers.md)
+- [Digital Visa PDF security and parser support](docs/card-statement-pdf.md)
+- [LTC frontend architecture](https://github.com/franciscofunes/lleva-tus-cuentas/blob/main/docs/architecture.md)
 
-## Context contract
-
-The iframe accepts messages only from allowed parent origins:
-
-```ts
-{
-  type: 'lita:context',
-  payload: {
-    section: 'transactions' | 'portfolio',
-    // current financial context
-  }
-}
-```
-
-Configure additional parent origins with `NEXT_PUBLIC_LITA_PARENT_ORIGINS`.
-
-## Local development
-
-```bash
-npm install
-npm run dev
-```
-
-LITA currently uses Next.js 13 and the Vercel AI SDK v2 streaming helpers. The provider router intentionally uses the OpenAI-compatible HTTP shape so providers can be changed without adding a provider-specific SDK.
-
-## Deployment
-
-The GitHub repository is linked to the Vercel project **lita**. Vercel preview deployments are created from branches. Production should point at the current `main` deployment before the React SPA is switched to the new integration.
+**Privacy reminder:** avoid logging or committing banking PDFs, user prompts containing personal information, JWTs, provider credentials or statement account identifiers. The default PDF path uses volatile memory; optional temporary external storage is explicitly gated.

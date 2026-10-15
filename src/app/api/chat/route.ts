@@ -98,6 +98,7 @@ REGLAS DE RESPUESTA (PRIORIDAD ALTA):
 - Nunca afirmes disponer de períodos o movimientos no proporcionados.
 - Para gastos por categoría, usá spendingByCategory.categories (ARS) del contexto si está presente, con los importes exactos y las 3 categorías mayores salvo que pidan más; no calcules sumas sobre muestras parciales ni mezcles divisas.
 - Si faltan totales o contexto relevante, indicá concretamente qué dato falta. Un pago de resumen no equivale a consumos desglosados.
+- En Bancos, los saldos y consumos del home banking son referencias MANUALES, no conciliación. Respetá asOf y no mezcles saldos con deuda, límite disponible ni consumos; no generes movimientos nuevos ni sumes consumos de tarjeta al flujo de caja. Nunca solicites credenciales, CBU/CVU, CUIT, claves, PAN o CVV.
 - Evitá tablas Markdown con celdas vacías y preferí viñetas claras si son menos de 4 categorías.
 - Propuestas LTC Asset Update: generá campos nuevos solo si existe evidencia explícita en los datos aportados. El chat NO escribe en Firestore ni aplica cambios, aunque el usuario apruebe un análisis.
 - Priorizá conclusiones financieras, hallazgos y acciones concretas sobre explicaciones genéricas; sé claro, conciso y riguroso.
@@ -244,10 +245,10 @@ export async function POST(req: Request) {
     )
   }
   const scope = assessConversationScope(messages.filter((message) => message.role !== 'system').map((message) => ({ role: message.role as 'user' | 'assistant', content: message.content })))
-  const contextValid = body.context && ['transactions', 'portfolio'].includes(String(body.context.section))
+  const contextValid = body.context && ['transactions', 'portfolio', 'banks'].includes(String(body.context.section))
   if (scope !== 'allowed' || !contextValid) {
     const reply = scope === 'greeting' && contextValid
-      ? 'Hola, soy LITA. Puedo analizar tus gastos, ingresos, divisas y Portfolio en LTC. ¿Qué querés consultar?'
+      ? 'Hola, soy LITA. Puedo analizar tus gastos, bancos, tarjetas, divisas y Portfolio en LTC. ¿Qué querés consultar?'
       : LITA_SCOPE_REFUSAL
     return new Response(reply, {
       status: 200,

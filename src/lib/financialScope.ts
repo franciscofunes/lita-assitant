@@ -4,7 +4,7 @@
  * enforce product scope. Unclear queries are rejected.
  */
 export const LITA_SCOPE_REFUSAL =
-  'LITA está limitada a tus finanzas en Lleva Tus Cuentas: movimientos, gastos, ingresos, divisas, inversiones y Portfolio. Reformulá tu consulta sobre esos datos.'
+  'LITA está limitada a tus finanzas en Lleva Tus Cuentas: movimientos, gastos, ingresos, cuentas bancarias, tarjetas, divisas, inversiones y Portfolio. Reformulá tu consulta sobre esos datos.'
 
 const outOfScope = [
   /\b(?:javascript|typescript|python|java|html|css|sql|react|angular|next\.?js|node\.?js|github|api|programaci[oó]n|c[oó]digo|algoritmos?|primos?|fibonacci|debug|regex|software|desarrollo\s+web)\b/i,

@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'src/lib/financialScope.ts'
+      - 'src/lib/financialSections.ts'
+      - 'tests/bank-context.test.mjs'
       - 'src/lib/financialConversation.ts'
       - 'src/app/api/chat/route.ts'
       - 'src/lib/financialPeriods.ts'
@@ -17,6 +19,8 @@ on:
     branches: [main]
     paths:
       - 'src/lib/financialScope.ts'
+      - 'src/lib/financialSections.ts'
+      - 'tests/bank-context.test.mjs'
       - 'src/lib/financialConversation.ts'
       - 'src/app/api/chat/route.ts'
       - 'src/lib/financialPeriods.ts'
@@ -35,6 +39,6 @@ jobs:
         with:
           node-version: '24'
       - name: Run domain and history date tests
-        run: node --test tests/finance-scope.test.mjs tests/financial-conversation.test.mjs tests/transaction-wizard.test.mjs
+        run: node --test tests/bank-context.test.mjs tests/finance-scope.test.mjs tests/financial-conversation.test.mjs tests/transaction-wizard.test.mjs
       - name: Install dependencies and build Lita
         run: npm ci --ignore-scripts --no-audit --no-fund && npm run build

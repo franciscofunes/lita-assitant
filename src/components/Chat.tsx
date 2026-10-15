@@ -108,6 +108,12 @@ const portfolioPrompts = [
   'Resumí tasas, liquidez y rendimientos',
 ]
 
+const banksPrompts = [
+  'Resumí los saldos que registré en mis bancos',
+  '¿Qué tarjetas tienen consumos o vencimientos?',
+  '¿Qué datos bancarios debería actualizar?',
+]
+
 const genericPrompts = [
   'Resumí mi situación financiera',
   '¿Qué debería revisar primero?',
@@ -677,12 +683,14 @@ export function Chat() {
       ? 'Portfolio'
       : financialContext?.section === 'transactions'
         ? 'Transacciones'
-        : 'Sin contexto'
+        : financialContext?.section === 'banks'
+          ? 'Bancos'
+          : 'Sin contexto'
 
   const contextIcon =
     financialContext?.section === 'portfolio' ? (
       <PieChart className="h-3.5 w-3.5" />
-    ) : financialContext?.section === 'transactions' ? (
+    ) : financialContext?.section === 'transactions' || financialContext?.section === 'banks' ? (
       <Wallet className="h-3.5 w-3.5" />
     ) : (
       <DollarSign className="h-3.5 w-3.5" />
@@ -693,7 +701,9 @@ export function Chat() {
       ? portfolioPrompts
       : financialContext?.section === 'transactions'
         ? transactionPrompts
-        : genericPrompts
+        : financialContext?.section === 'banks'
+          ? banksPrompts
+          : genericPrompts
 
   const verifiedSpending = financialContext?.section === 'transactions' &&
     financialContext.spendingByCategory?.currency === 'ARS'
@@ -1155,7 +1165,9 @@ export function Chat() {
                             ? 'Portfolio'
                             : thread.section === 'transactions'
                               ? 'Transacciones'
-                              : 'General'}
+                              : thread.section === 'banks'
+                                ? 'Bancos'
+                                : 'General'}
                         </span>
                         <span>{formatHistoryDate(thread.updatedAt)}</span>
                       </span>

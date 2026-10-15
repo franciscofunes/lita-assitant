@@ -1,5 +1,6 @@
 import { OpenAIStream, StreamingTextResponse } from 'ai'
 import { LITA_SCOPE_REFUSAL, MAX_LTC_FINANCIAL_PROMPT_CHARS } from '@/lib/financialScope'
+import { isSupportedLtcFinancialSection } from '@/lib/financialSections'
 import { assessConversationScope, buildConversationForProvider, sanitizeAssistantOutput } from '@/lib/financialConversation'
 import {
   AiProvider,
@@ -245,7 +246,7 @@ export async function POST(req: Request) {
     )
   }
   const scope = assessConversationScope(messages.filter((message) => message.role !== 'system').map((message) => ({ role: message.role as 'user' | 'assistant', content: message.content })))
-  const contextValid = body.context && ['transactions', 'portfolio', 'banks'].includes(String(body.context.section))
+  const contextValid = body.context && isSupportedLtcFinancialSection(body.context.section)
   if (scope !== 'allowed' || !contextValid) {
     const reply = scope === 'greeting' && contextValid
       ? 'Hola, soy LITA. Puedo analizar tus gastos, bancos, tarjetas, divisas y Portfolio en LTC. ¿Qué querés consultar?'

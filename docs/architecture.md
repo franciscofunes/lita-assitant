@@ -133,3 +133,22 @@ The API implementation lives at `src/app/api/card-statements/analyze/route.ts`; 
 - Vercel logs and the actual deployment SHA are required to distinguish a **ready preview** from the **domain serving production**.
 
 See [Development and operations](development.md) for commands, production promotion and troubleshooting, and [LTC architecture](https://github.com/franciscofunes/lleva-tus-cuentas/blob/main/docs/architecture.md) for the Firestore data model and user review lifecycle.
+
+## Authenticated legacy LTC advice route
+
+LTC's older standalone assistant uses `POST /api/ltc/advice` via a Firebase ID token and a fixed Origin allowlist. Lita verifies the signed token through the existing `statementAuth.ts` helper before delegating to the current `/api/chat` server handler for financial-scope screening, provider fallback and sanitized Spanish output. It passes only the user's short question and `section: transactions`, not arbitrary browser-supplied system messages or personal financial context. No Firestore writes or direct browser-provider calls are performed. `/api/chat` continues to serve the existing same-origin iframe without a new authentication requirement.
+
+~~~mermaid
+sequenceDiagram
+    participant UI as LTC standalone widget
+    participant API as Lita /api/ltc/advice
+    participant Auth as Firebase JWKS
+    participant Chat as Existing /api/chat handler
+    UI->>API: POST question + Bearer ID token
+    API->>API: Check Origin / body size / rate limit
+    API->>Auth: Verify signed Firebase token
+    Auth-->>API: Verified UID
+    API->>Chat: One user message, fixed financial section
+    Chat-->>API: Safe response via configured AI providers
+    API-->>UI: UTF-8 financial advice
+~~~

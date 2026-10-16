@@ -7,6 +7,10 @@ on:
       - 'tests/bank-context.test.mjs'
       - 'src/lib/financialConversation.ts'
       - 'src/app/api/chat/route.ts'
+      - 'src/app/api/ltc/advice/route.ts'
+      - 'src/lib/ltcAdvice.ts'
+      - 'src/lib/statementAuth.ts'
+      - 'tests/ltc-advice.test.mjs'
       - 'src/lib/financialPeriods.ts'
       - 'src/lib/transactionMarkdownWizard.ts'
       - 'src/components/TransactionMarkdownWizard.tsx'
@@ -23,6 +27,10 @@ on:
       - 'tests/bank-context.test.mjs'
       - 'src/lib/financialConversation.ts'
       - 'src/app/api/chat/route.ts'
+      - 'src/app/api/ltc/advice/route.ts'
+      - 'src/lib/ltcAdvice.ts'
+      - 'src/lib/statementAuth.ts'
+      - 'tests/ltc-advice.test.mjs'
       - 'src/lib/financialPeriods.ts'
       - 'src/lib/transactionMarkdownWizard.ts'
       - 'src/components/TransactionMarkdownWizard.tsx'
@@ -39,6 +47,6 @@ jobs:
         with:
           node-version: '24'
       - name: Run domain and history date tests
-        run: node --test tests/bank-context.test.mjs tests/finance-scope.test.mjs tests/financial-conversation.test.mjs tests/transaction-wizard.test.mjs
+        run: node --test tests/bank-context.test.mjs tests/ltc-advice.test.mjs tests/finance-scope.test.mjs tests/financial-conversation.test.mjs tests/transaction-wizard.test.mjs
       - name: Install dependencies and build Lita
         run: npm ci --ignore-scripts --no-audit --no-fund && npm run build

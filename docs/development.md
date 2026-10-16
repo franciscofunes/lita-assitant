@@ -101,3 +101,7 @@ flowchart TD
 If LTC changes its iframe host, update both sides' event/origin rules. If LTC changes the PDF review schema, coordinate the parser output with `src/services/cardStatementService.js`. If LTC adds new category metadata, test that it is never interpreted as instruction to Lita's provider router. Maintain ARS/USD isolation and do not double-count card statement purchases as transactions.
 
 Additional source documents: [system architecture](architecture.md), [provider setup](ai-providers.md), [PDF parser and security](card-statement-pdf.md), and the [LTC engineering README](https://github.com/franciscofunes/lleva-tus-cuentas).
+
+### Standalone LTC advice endpoint
+
+`POST /api/ltc/advice` requires `FIREBASE_PROJECT_ID`, the same as statement PDF analysis, and only accepts a short JSON message plus a verified Firebase bearer token from an allowed LTC Origin. Run `node --test tests/ltc-advice.test.mjs` to verify origin and payload guards. It delegates actual model calls to the existing server-side Lita chat pipeline; there is **no** OpenAI credential in the LTC browser. Rotate/delete a previously published `REACT_APP_OPENAI_API_KEY` in LTC hosting providers after the client change ships. Origins for additional previews can be set via `LTC_ALLOWED_ORIGINS`.

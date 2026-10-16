@@ -116,3 +116,9 @@ These commands mirror the scope and PDF regression areas covered by GitHub workf
 - [LTC frontend architecture](https://github.com/franciscofunes/lleva-tus-cuentas/blob/main/docs/architecture.md)
 
 **Privacy reminder:** avoid logging or committing banking PDFs, user prompts containing personal information, JWTs, provider credentials or statement account identifiers. The default PDF path uses volatile memory; optional temporary external storage is explicitly gated.
+
+## Authenticated LTC financial advice API
+
+The older, standalone LTC advice widget uses `POST /api/ltc/advice` instead of calling OpenAI from browser JavaScript. This endpoint verifies a signed Firebase ID token (same `FIREBASE_PROJECT_ID` and key rotation as PDF analysis), checks the browser Origin, bounds the prompt and applies best-effort per-instance rate limiting. It forwards a single user message to the **existing** `/api/chat` financial-scope, provider-fallback and Spanish-answer pipeline. It cannot write Firestore data. Request: `{ "message": "Consejos de ahorro" }` plus `Authorization: Bearer <Firebase ID token>`; response: UTF-8 assistant text, or `{ "error": "..." }` on errors. Supported production origins include both official LTC Netlify and Vercel domains; set `LTC_ALLOWED_ORIGINS` for additional exact origins.
+
+This change eliminates the need for `REACT_APP_OPENAI_API_KEY` in LTC. **Rotate any previously exposed OpenAI key and remove that client-side Vercel/Netlify environment variable**; browser build variables are public. No new AI provider credentials are required beyond Lita's existing server-side setup.

@@ -20,7 +20,7 @@ const corsHeaders = (origin: string) => ({
 })
 
 const jsonError = (origin: string, status: number, error: string) =>
-  Response.json({ error }, { status, headers: corsHeaders(origin) })
+  new Response(JSON.stringify({ error }), { status, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json; charset=utf-8' } })
 
 // Best-effort per-instance rate limiting. A distributed rate limiter can be
 // added later without changing the auth or payload contract.

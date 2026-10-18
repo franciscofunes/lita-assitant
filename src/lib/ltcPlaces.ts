@@ -3,9 +3,9 @@ export const MAX_PLACE_QUERY = 80
 
 export function parsePlaceQuery(value: unknown): string {
   if (typeof value !== 'string') throw new Error('INVALID_PLACE_QUERY')
+  if (/[\r\n\x00-\x1f<>]/.test(value)) throw new Error('INVALID_PLACE_QUERY')
   const query = value.replace(/\s+/g, ' ').trim()
-  if (query.length < MIN_PLACE_QUERY || query.length > MAX_PLACE_QUERY ||
-      /[\r\n\x00-\x1f<>]/.test(query)) throw new Error('INVALID_PLACE_QUERY')
+  if (query.length < MIN_PLACE_QUERY || query.length > MAX_PLACE_QUERY) throw new Error('INVALID_PLACE_QUERY')
   return query
 }
 

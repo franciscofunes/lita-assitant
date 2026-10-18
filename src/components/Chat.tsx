@@ -109,9 +109,10 @@ const portfolioPrompts = [
 ]
 
 const banksPrompts = [
-  'Resumí los saldos que registré en mis bancos',
+  'Compará el mes de mayor y menor consumo en todos mis resúmenes vinculados, separado en ARS y USD',
+  '¿Qué tope mensual me recomendás para tarjetas según mis últimos resúmenes?',
   '¿Qué tarjetas tienen consumos o vencimientos?',
-  '¿Qué datos bancarios debería actualizar?',
+  'Resumí los saldos que registré en mis bancos',
 ]
 
 const genericPrompts = [

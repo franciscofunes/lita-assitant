@@ -271,6 +271,12 @@ export function Chat() {
   const pendingSaveRef = useRef<PendingSave | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null)
+  const [deletePending, setDeletePending] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const pendingDeleteRef = useRef<{requestId:string;id:string} | null>(null)
+  const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const activeChatIdRef = useRef('')
   const [transactionWizardOpen, setTransactionWizardOpen] = useState(false)
   const [activeChatId, setActiveChatId] = useState('')
   const [activeCreatedAt, setActiveCreatedAt] = useState('')
@@ -331,6 +337,10 @@ export function Chat() {
   }, [])
 
   useEffect(() => {
+    activeChatIdRef.current = activeChatId
+  }, [activeChatId])
+
+  useEffect(() => {
     const handleParentMessage = (event: MessageEvent) => {
       if (event.source !== window.parent || !(allowedParentOrigins.has(event.origin) || trustedLtcPreviewOrigin.test(event.origin))) return
       parentOriginRef.current = event.origin
@@ -374,6 +384,37 @@ export function Chat() {
         const status = event.data.payload as HistoryStatus | undefined
         if (status && ['loading', 'ready', 'error', 'unavailable'].includes(status.state)) {
           setHistoryStatus({ state: status.state, reason: status.reason })
+        }
+        return
+      }
+
+      if (event.data?.type === 'lita:history:delete:result') {
+        const response = event.data.payload
+        const pending = pendingDeleteRef.current
+        if (!pending || response?.requestId !== pending.requestId || response?.id !== pending.id) return
+        if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current)
+        deleteTimeoutRef.current = null
+        pendingDeleteRef.current = null
+        setDeletePending(false)
+        if (response.success === true) {
+          setHistoryThreads((current) => current.filter((thread) => thread.id !== pending.id))
+          setDeleteTarget(null)
+          setDeleteError('')
+          if (pending.id === activeChatIdRef.current) {
+            setMessages([])
+            setInput('')
+            setActiveChatId(createChatId())
+            setActiveCreatedAt(new Date().toISOString())
+            lastSavedSignatureRef.current = ''
+            setSaveStatus('idle')
+            setSaveError('')
+          }
+        } else {
+          setDeleteError(response.reason === 'permission-denied'
+            ? 'No tenés permiso para eliminar esta conversación. Revisá las reglas del historial.'
+            : response.reason === 'unauthenticated'
+              ? 'Iniciá sesión en LTC para eliminar conversaciones.'
+              : 'No pudimos eliminar la conversación. Probá nuevamente.')
         }
         return
       }
@@ -529,6 +570,7 @@ export function Chat() {
 
   useEffect(() => () => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current)
   }, [])
 
   const retrySave = () => {
@@ -658,26 +700,47 @@ export function Chat() {
     setHistoryOpen(false)
   }
 
-  const deleteThread = (threadId: string) => {
-    const parentOrigin = parentOriginRef.current
-    if (parentOrigin) {
-      window.parent.postMessage(
-        {
-          type: 'lita:history:delete',
-          payload: { id: threadId },
-        },
-        parentOrigin,
-      )
+  // The parent is the only authorized Firestore writer. Never remove a thread
+  // from the UI before it confirms deletion; errors must remain retryable.
+  const deleteThread = () => {
+    const target = deleteTarget
+    if (!target || pendingDeleteRef.current) return
+    const origin = parentOriginRef.current
+    if (!origin) {
+      setDeleteError('Abrí LITA desde Lleva Tus Cuentas para eliminar una conversación.')
+      return
     }
-
-    setHistoryThreads((current) =>
-      current.filter((thread) => thread.id !== threadId),
-    )
-
-    if (threadId === activeChatId) {
-      startNewChat()
-    }
+    const requestId = createChatId()
+    pendingDeleteRef.current = { requestId, id: target.id }
+    setDeletePending(true)
+    setDeleteError('')
+    window.parent.postMessage({
+      type: 'lita:history:delete',
+      payload: { requestId, id: target.id },
+    }, origin)
+    if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current)
+    deleteTimeoutRef.current = setTimeout(() => {
+      if (pendingDeleteRef.current?.requestId !== requestId) return
+      pendingDeleteRef.current = null
+      setDeletePending(false)
+      setDeleteError('LTC no confirmó la eliminación. Reintentá.')
+    }, 10000)
   }
+
+  useEffect(() => {
+    if (!deleteTarget) return
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      if (!pendingDeleteRef.current) {
+        setDeleteTarget(null)
+        setDeleteError('')
+      }
+    }
+    window.addEventListener('keydown', onEscape, true)
+    return () => window.removeEventListener('keydown', onEscape, true)
+  }, [deleteTarget])
 
   const contextLabel =
     financialContext?.section === 'portfolio'

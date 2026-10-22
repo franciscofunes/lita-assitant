@@ -876,6 +876,11 @@ export function Chat() {
         </div>
       </header>
 
+      {financialContext?.privacyHidden === true && (
+        <div role="status" className="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-2.5 text-xs leading-relaxed text-amber-950 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-200">
+          Modo privacidad activo: LITA no recibe los importes ni el historial de esta pantalla. Para analizar tus datos, cerrá el chat y volvé a mostrar los importes en LTC.
+        </div>
+      )}
       <section className="lita-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-4 sm:px-5">
         <div className="mx-auto flex w-full max-w-2xl flex-col">
           {messages.length === 0 && (
@@ -1179,19 +1184,23 @@ export function Chat() {
             ) : historyStatus.state === 'error' || historyStatus.state === 'unavailable' ? (
               <div role="alert" className="rounded-2xl border border-amber-500/40 p-5 text-center">
                 <p className="font-bold text-slate-900 dark:text-white">
-                  No se pudo cargar el historial
+                  {historyStatus.reason === 'privacy-hidden' ? 'Historial oculto por privacidad' : 'No se pudo cargar el historial'}
                 </p>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                  {historyStatus.reason === 'permission-denied'
-                    ? 'Firestore rechazó la lectura. Revisá las reglas del historial de LITA.'
+                  {historyStatus.reason === 'privacy-hidden'
+                    ? 'Volvé a mostrar los importes en LTC para consultar tus conversaciones guardadas.'
+                    : historyStatus.reason === 'permission-denied'
+                      ? 'Firestore rechazó la lectura. Revisá las reglas del historial de LITA.'
                     : historyStatus.reason === 'unauthenticated'
                       ? 'Iniciá sesión en Lleva Tus Cuentas para ver tus conversaciones.'
                       : 'No pudimos consultar tus conversaciones. Intentá nuevamente.'}
                 </p>
+                {historyStatus.reason !== 'privacy-hidden' && (
                 <button type="button" onClick={refreshHistory}
                   className="mt-4 min-h-[44px] rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
                   Reintentar
                 </button>
+                )}
               </div>
             ) : historyThreads.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-900/50 px-4 py-8 text-center">

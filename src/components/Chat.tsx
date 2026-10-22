@@ -376,7 +376,16 @@ export function Chat() {
       }
 
       if (event.data?.type === 'lita:history') {
-        setHistoryThreads(normalizeHistory(event.data.payload))
+        const incoming = normalizeHistory(event.data.payload)
+        // Firestore's real-time subscription may update before the host sends
+        // delete:result. Keep the targeted row until the matching ACK arrives.
+        setHistoryThreads((current) => {
+          const pending = pendingDeleteRef.current
+          if (!pending || currentHostContextRef.current?.privacyHidden === true) return incoming
+          const original = current.find((thread) => thread.id === pending.id)
+          if (!original || incoming.some((thread) => thread.id === pending.id)) return incoming
+          return [original, ...incoming].slice(0, 20)
+        })
         return
       }
 

@@ -1238,7 +1238,7 @@ export function Chat() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteThread(thread.id)}
+                      onClick={() => { setDeleteTarget(thread); setDeleteError('') }}
                       className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-rose-700 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/30"
                       aria-label={`Eliminar ${thread.title}`}
                     >
@@ -1249,6 +1249,45 @@ export function Chat() {
               </div>
             )}
           </div>
+          {deleteTarget && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3 sm:p-5">
+              <section role="alertdialog" aria-modal="true" aria-labelledby="lita-delete-title" aria-describedby="lita-delete-description"
+                onKeyDown={(event) => {
+                  if (event.key !== 'Tab') return
+                  const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'))
+                  if (!buttons.length) return
+                  const first = buttons[0], last = buttons[buttons.length - 1]
+                  if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault()
+                    last.focus()
+                  } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault()
+                    first.focus()
+                  }
+                }}
+                className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-50 sm:p-5">
+                <h2 id="lita-delete-title" className="break-words text-xl font-extrabold">
+                  ¿Eliminar esta conversación?
+                </h2>
+                <p id="lita-delete-description" className="mt-2 break-words text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                  Se eliminará «{deleteTarget.title}» de tu historial de LTC.
+                  Esta acción no se puede deshacer.
+                </p>
+                {deleteError && <p role="alert" className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">{deleteError}</p>}
+                <div className="mt-5 flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 dark:border-slate-700 sm:flex-row sm:justify-end">
+                  <button type="button" autoFocus disabled={deletePending}
+                    onClick={() => { setDeleteTarget(null); setDeleteError('') }}
+                    className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                    Cancelar
+                  </button>
+                  <button type="button" disabled={deletePending} onClick={deleteThread}
+                    className="min-h-[44px] rounded-xl border border-rose-400 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-800 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:opacity-50 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-200">
+                    {deletePending ? 'Eliminando…' : 'Eliminar conversación'}
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
         </section>
       )}
     </main>

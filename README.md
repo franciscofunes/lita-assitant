@@ -109,6 +109,7 @@ These commands mirror the scope and PDF regression areas covered by GitHub workf
 
 ## Documentation
 
+- [Lita UX #229 — consistent chat, privacy and confirmed conversation deletion](docs/lita-ux-229.md)
 - [Architecture and end-to-end diagrams](docs/architecture.md)
 - [Local development, deployment, privacy, troubleshooting](docs/development.md)
 - [AI provider setup](docs/ai-providers.md)

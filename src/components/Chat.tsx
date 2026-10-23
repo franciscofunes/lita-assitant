@@ -271,6 +271,12 @@ export function Chat() {
   const pendingSaveRef = useRef<PendingSave | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ChatThread | null>(null)
+  const [deletePending, setDeletePending] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const pendingDeleteRef = useRef<{requestId:string;id:string} | null>(null)
+  const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const activeChatIdRef = useRef('')
   const [transactionWizardOpen, setTransactionWizardOpen] = useState(false)
   const [activeChatId, setActiveChatId] = useState('')
   const [activeCreatedAt, setActiveCreatedAt] = useState('')
@@ -331,6 +337,10 @@ export function Chat() {
   }, [])
 
   useEffect(() => {
+    activeChatIdRef.current = activeChatId
+  }, [activeChatId])
+
+  useEffect(() => {
     const handleParentMessage = (event: MessageEvent) => {
       if (event.source !== window.parent || !(allowedParentOrigins.has(event.origin) || trustedLtcPreviewOrigin.test(event.origin))) return
       parentOriginRef.current = event.origin
@@ -366,7 +376,16 @@ export function Chat() {
       }
 
       if (event.data?.type === 'lita:history') {
-        setHistoryThreads(normalizeHistory(event.data.payload))
+        const incoming = normalizeHistory(event.data.payload)
+        // Firestore's real-time subscription may update before the host sends
+        // delete:result. Keep the targeted row until the matching ACK arrives.
+        setHistoryThreads((current) => {
+          const pending = pendingDeleteRef.current
+          if (!pending || currentHostContextRef.current?.privacyHidden === true) return incoming
+          const original = current.find((thread) => thread.id === pending.id)
+          if (!original || incoming.some((thread) => thread.id === pending.id)) return incoming
+          return [original, ...incoming].slice(0, 20)
+        })
         return
       }
 
@@ -374,6 +393,37 @@ export function Chat() {
         const status = event.data.payload as HistoryStatus | undefined
         if (status && ['loading', 'ready', 'error', 'unavailable'].includes(status.state)) {
           setHistoryStatus({ state: status.state, reason: status.reason })
+        }
+        return
+      }
+
+      if (event.data?.type === 'lita:history:delete:result') {
+        const response = event.data.payload
+        const pending = pendingDeleteRef.current
+        if (!pending || response?.requestId !== pending.requestId || response?.id !== pending.id) return
+        if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current)
+        deleteTimeoutRef.current = null
+        pendingDeleteRef.current = null
+        setDeletePending(false)
+        if (response.success === true) {
+          setHistoryThreads((current) => current.filter((thread) => thread.id !== pending.id))
+          setDeleteTarget(null)
+          setDeleteError('')
+          if (pending.id === activeChatIdRef.current) {
+            setMessages([])
+            setInput('')
+            setActiveChatId(createChatId())
+            setActiveCreatedAt(new Date().toISOString())
+            lastSavedSignatureRef.current = ''
+            setSaveStatus('idle')
+            setSaveError('')
+          }
+        } else {
+          setDeleteError(response.reason === 'permission-denied'
+            ? 'No tenés permiso para eliminar esta conversación. Revisá las reglas del historial.'
+            : response.reason === 'unauthenticated'
+              ? 'Iniciá sesión en LTC para eliminar conversaciones.'
+              : 'No pudimos eliminar la conversación. Probá nuevamente.')
         }
         return
       }
@@ -529,6 +579,7 @@ export function Chat() {
 
   useEffect(() => () => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current)
   }, [])
 
   const retrySave = () => {
@@ -658,26 +709,47 @@ export function Chat() {
     setHistoryOpen(false)
   }
 
-  const deleteThread = (threadId: string) => {
-    const parentOrigin = parentOriginRef.current
-    if (parentOrigin) {
-      window.parent.postMessage(
-        {
-          type: 'lita:history:delete',
-          payload: { id: threadId },
-        },
-        parentOrigin,
-      )
+  // The parent is the only authorized Firestore writer. Never remove a thread
+  // from the UI before it confirms deletion; errors must remain retryable.
+  const deleteThread = () => {
+    const target = deleteTarget
+    if (!target || pendingDeleteRef.current) return
+    const origin = parentOriginRef.current
+    if (!origin) {
+      setDeleteError('Abrí LITA desde Lleva Tus Cuentas para eliminar una conversación.')
+      return
     }
-
-    setHistoryThreads((current) =>
-      current.filter((thread) => thread.id !== threadId),
-    )
-
-    if (threadId === activeChatId) {
-      startNewChat()
-    }
+    const requestId = createChatId()
+    pendingDeleteRef.current = { requestId, id: target.id }
+    setDeletePending(true)
+    setDeleteError('')
+    window.parent.postMessage({
+      type: 'lita:history:delete',
+      payload: { requestId, id: target.id },
+    }, origin)
+    if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current)
+    deleteTimeoutRef.current = setTimeout(() => {
+      if (pendingDeleteRef.current?.requestId !== requestId) return
+      pendingDeleteRef.current = null
+      setDeletePending(false)
+      setDeleteError('LTC no confirmó la eliminación. Reintentá.')
+    }, 10000)
   }
+
+  useEffect(() => {
+    if (!deleteTarget) return
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      if (!pendingDeleteRef.current) {
+        setDeleteTarget(null)
+        setDeleteError('')
+      }
+    }
+    window.addEventListener('keydown', onEscape, true)
+    return () => window.removeEventListener('keydown', onEscape, true)
+  }, [deleteTarget])
 
   const contextLabel =
     financialContext?.section === 'portfolio'
@@ -725,9 +797,9 @@ export function Chat() {
     .map((entry) => ({ name: entry.name, isExpense: entry.isExpense === true }))
 
   return (
-    <main data-testid="lita-chat-shell" style={visibleHeight ? { height: visibleHeight } : undefined} className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-      <header className="shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 px-4 py-3 backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
+    <main data-testid="lita-chat-shell" style={visibleHeight ? { height: visibleHeight } : undefined} className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-gray-900 dark:text-slate-100">
+      <header className="shrink-0 border-b border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-800 sm:px-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-950/30">
               <Bot className="h-5 w-5" />
@@ -748,14 +820,14 @@ export function Chat() {
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex min-w-0 shrink-0 items-center justify-end gap-2">
             {financialContext?.section === 'transactions' && (
               <button
                 type="button"
                 onClick={() => setTransactionWizardOpen(true)}
                 aria-label="Preparar transacción con Markdown"
                 title="Preparar transacción con Markdown"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-violet-400/40 bg-violet-500/10 text-violet-700 transition hover:bg-violet-500/20 dark:text-violet-300"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-violet-300 bg-violet-50 text-violet-800 transition hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-violet-700 dark:bg-slate-900 dark:text-violet-200 dark:hover:bg-slate-700"
               >
                 <FileText className="h-4 w-4" />
               </button>
@@ -763,7 +835,7 @@ export function Chat() {
             <button
               type="button"
               onClick={startNewChat}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900/90 text-slate-900 dark:text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 transition hover:border-violet-400 hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-700"
               aria-label="Nueva conversación"
               title="Nueva conversación"
             >
@@ -773,7 +845,7 @@ export function Chat() {
             <button
               type="button"
               onClick={() => setHistoryOpen(true)}
-              className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-900/90 text-slate-900 dark:text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 transition hover:border-violet-400 hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-700"
               aria-label="Historial de conversaciones"
               title="Historial"
             >
@@ -785,7 +857,7 @@ export function Chat() {
 
             <div
               className={[
-                'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-xl border px-2 text-[11px] font-semibold',
+                'inline-flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] font-semibold',
                 providerStatus?.ready
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
                   : providerStatus
@@ -813,11 +885,16 @@ export function Chat() {
         </div>
       </header>
 
+      {financialContext?.privacyHidden === true && (
+        <div role="status" className="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-2.5 text-xs leading-relaxed text-amber-950 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-200">
+          Modo privacidad activo: LITA no recibe los importes ni el historial de esta pantalla. Para analizar tus datos, cerrá el chat y volvé a mostrar los importes en LTC.
+        </div>
+      )}
       <section className="lita-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-4 sm:px-5">
         <div className="mx-auto flex w-full max-w-2xl flex-col">
           {messages.length === 0 && (
             <div className="mb-6">
-              <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-5 shadow-xl shadow-black/10">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800 sm:p-5">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-700 dark:text-violet-300">
                     <Sparkles className="h-4 w-4" />
@@ -847,7 +924,7 @@ export function Chat() {
                       key={prompt}
                       type="button"
                       onClick={() => setInput(prompt)}
-                      className="group flex w-full items-center justify-between gap-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-950/70 px-3.5 py-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-200 transition hover:border-violet-500/60 hover:bg-violet-500/10"
+                      className="group flex min-h-[44px] w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-3 text-left text-sm font-semibold text-slate-800 transition hover:border-violet-500/60 hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-slate-600 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-700"
                     >
                       <span>{prompt}</span>
                       <Send className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-500 transition group-hover:text-violet-300" />
@@ -904,7 +981,7 @@ export function Chat() {
                       'min-w-0 max-w-[86%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
                       isUser
                         ? 'rounded-br-md bg-violet-600 text-white'
-                        : 'rounded-bl-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200',
+                        : 'rounded-bl-md border border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200',
                     ].join(' ')}
                   >
                     {isUser ? (
@@ -972,7 +1049,7 @@ export function Chat() {
                   <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-violet-400/30 bg-violet-500/15 text-violet-700 dark:text-violet-100">
                     <Bot className="h-4 w-4" />
                   </div>
-                  <div className="rounded-2xl rounded-bl-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
+                  <div className="rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-800">
                     <div className="flex items-center gap-1.5">
                       <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400" />
                       <span className="h-2 w-2 animate-bounce rounded-full bg-violet-400 [animation-delay:120ms]" />
@@ -998,7 +1075,7 @@ export function Chat() {
         </div>
       </section>
 
-      <footer data-testid="lita-chat-composer" className="relative z-10 shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 px-3 pt-2.5 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur sm:p-4">
+      <footer data-testid="lita-chat-composer" className="relative z-10 shrink-0 border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 px-3 pt-2.5 pb-[max(8px,env(safe-area-inset-bottom))] backdrop-blur sm:p-4">
         {saveStatus !== 'idle' && (
           <div role={saveStatus === 'error' ? 'alert' : 'status'} className="mx-auto mb-2 flex w-full max-w-2xl items-center justify-between gap-2 text-xs">
             <span className={saveStatus === 'error'
@@ -1077,7 +1154,7 @@ export function Chat() {
       )}
 
       {historyOpen && (
-        <section className="absolute inset-0 z-40 flex min-h-0 flex-col bg-slate-50 dark:bg-slate-950">
+        <section className="absolute inset-0 z-40 flex min-h-0 flex-col bg-slate-50 dark:bg-gray-900">
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 px-4 py-3">
             <div>
               <h2 className="text-base font-extrabold text-slate-950 dark:text-white">
@@ -1090,7 +1167,7 @@ export function Chat() {
             <button
               type="button"
               onClick={() => setHistoryOpen(false)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition hover:border-violet-400/60 hover:bg-violet-500/10 hover:text-violet-100"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-900 transition hover:border-violet-400 hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-700"
               aria-label="Cerrar historial"
             >
               <X className="h-4 w-4" />
@@ -1101,7 +1178,7 @@ export function Chat() {
             <button
               type="button"
               onClick={startNewChat}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2.5 text-sm font-bold text-white transition hover:bg-violet-500"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2.5 text-sm font-bold text-white transition hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
             >
               <Plus className="h-4 w-4" />
               Nueva conversación
@@ -1116,19 +1193,23 @@ export function Chat() {
             ) : historyStatus.state === 'error' || historyStatus.state === 'unavailable' ? (
               <div role="alert" className="rounded-2xl border border-amber-500/40 p-5 text-center">
                 <p className="font-bold text-slate-900 dark:text-white">
-                  No se pudo cargar el historial
+                  {historyStatus.reason === 'privacy-hidden' ? 'Historial oculto por privacidad' : 'No se pudo cargar el historial'}
                 </p>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                  {historyStatus.reason === 'permission-denied'
-                    ? 'Firestore rechazó la lectura. Revisá las reglas del historial de LITA.'
+                  {historyStatus.reason === 'privacy-hidden'
+                    ? 'Volvé a mostrar los importes en LTC para consultar tus conversaciones guardadas.'
+                    : historyStatus.reason === 'permission-denied'
+                      ? 'Firestore rechazó la lectura. Revisá las reglas del historial de LITA.'
                     : historyStatus.reason === 'unauthenticated'
                       ? 'Iniciá sesión en Lleva Tus Cuentas para ver tus conversaciones.'
                       : 'No pudimos consultar tus conversaciones. Intentá nuevamente.'}
                 </p>
+                {historyStatus.reason !== 'privacy-hidden' && (
                 <button type="button" onClick={refreshHistory}
-                  className="mt-4 rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white">
+                  className="mt-4 min-h-[44px] rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
                   Reintentar
                 </button>
+                )}
               </div>
             ) : historyThreads.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-900/50 px-4 py-8 text-center">
@@ -1149,13 +1230,13 @@ export function Chat() {
                       'flex items-stretch gap-2 rounded-2xl border p-2',
                       thread.id === activeChatId
                         ? 'border-violet-500/50 bg-violet-500/10'
-                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70',
+                        : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800',
                     ].join(' ')}
                   >
                     <button
                       type="button"
                       onClick={() => loadThread(thread)}
-                      className="min-w-0 flex-1 rounded-xl px-2 py-1.5 text-left transition hover:bg-slate-200 dark:hover:bg-slate-800/70"
+                      className="min-h-[44px] min-w-0 flex-1 rounded-xl px-2 py-2 text-left transition hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-slate-700"
                     >
                       <span className="block truncate text-sm font-bold text-slate-900 dark:text-slate-100">
                         {thread.title}
@@ -1175,8 +1256,8 @@ export function Chat() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteThread(thread.id)}
-                      className="inline-flex w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 dark:text-slate-500 transition hover:bg-red-500/10 hover:text-red-300"
+                      onClick={() => { setDeleteTarget(thread); setDeleteError('') }}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-rose-700 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/30"
                       aria-label={`Eliminar ${thread.title}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1186,6 +1267,45 @@ export function Chat() {
               </div>
             )}
           </div>
+          {deleteTarget && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3 sm:p-5">
+              <section role="alertdialog" aria-modal="true" aria-labelledby="lita-delete-title" aria-describedby="lita-delete-description"
+                onKeyDown={(event) => {
+                  if (event.key !== 'Tab') return
+                  const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'))
+                  if (!buttons.length) return
+                  const first = buttons[0], last = buttons[buttons.length - 1]
+                  if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault()
+                    last.focus()
+                  } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault()
+                    first.focus()
+                  }
+                }}
+                className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-50 sm:p-5">
+                <h2 id="lita-delete-title" className="break-words text-xl font-extrabold">
+                  ¿Eliminar esta conversación?
+                </h2>
+                <p id="lita-delete-description" className="mt-2 break-words text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                  Se eliminará «{deleteTarget.title}» de tu historial de LTC.
+                  Esta acción no se puede deshacer.
+                </p>
+                {deleteError && <p role="alert" className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-200">{deleteError}</p>}
+                <div className="mt-5 flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 dark:border-slate-700 sm:flex-row sm:justify-end">
+                  <button type="button" autoFocus disabled={deletePending}
+                    onClick={() => { setDeleteTarget(null); setDeleteError('') }}
+                    className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                    Cancelar
+                  </button>
+                  <button type="button" disabled={deletePending} onClick={deleteThread}
+                    className="min-h-[44px] rounded-xl border border-rose-400 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-800 hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:opacity-50 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-200">
+                    {deletePending ? 'Eliminando…' : 'Eliminar conversación'}
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
         </section>
       )}
     </main>

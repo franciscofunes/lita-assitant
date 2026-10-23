@@ -152,3 +152,11 @@ sequenceDiagram
     Chat-->>API: Safe response via configured AI providers
     API-->>UI: UTF-8 financial advice
 ~~~
+
+## Lita UX #229 — privacy-preserving embedded chat and confirmed deletes
+
+The visual reference is LTC Transactions and the shared financial UI contract. Lita's iframe and the LTC host use matching opaque slate/violet surfaces, accessibility and 44px controls.
+
+When the LTC privacy toggle is enabled, the host posts only `{section,scope:'privacy-hidden',privacyHidden:true}`, sends no saved history and declines historical lookups. The iframe renders an explicit privacy status instead of treating suppressed data as a missing Firestore record.
+
+Conversation deletion is **not optimistic**. The iframe presents a confirmation and sends `lita:history:delete {id,requestId}` to the parent. The parent checks origin/window + signed-in owner, awaits a successful Firestore deletion and replies `lita:history:delete:result {id,requestId,success,reason?}`. The iframe removes the row only on matching confirmed success; failures/timeouts remain retryable. The old iframe without request IDs remains accepted by LTC for backward compatibility. See [Lita UX #229](lita-ux-229.md).

@@ -42,6 +42,8 @@ Crucially, its `DB IVA $ 21%` row lists **taxable fee base and VAT**: only the *
 
 Sample fixture is synthetic and PII-free. The customer-provided PDF, account/card details and policy identifiers are never committed.
 
+Later Banco Ciudad Visa Gold PDFs may mix six-digit receipts suffixed by `*` and `K` within one billing period. Both are purchase rows and must reconcile to the printed `Total Consumos` before the separate administration fee and its VAT are added. Mixed-marker synthetic tests cover this case, including two installments, cleared prior balance, sanitized policy/reference identifiers, and fail-closed behavior for unrecognized markers. The original statement is used only for local validation and is never committed.
+
 ## Common setup issue (Firebase Spark)
 `AUTH_NOT_CONFIGURED` means **LITA is missing the Firebase project ID**, not that Firebase charges for the feature. On Vercel set `FIREBASE_PROJECT_ID` to the exact public project ID from LTC (`REACT_APP_PROJECT_ID`), with no wrapping quotes; deploy again so runtime picks up the variable. The server may also read `NEXT_PUBLIC_FIREBASE_PROJECT_ID` and removes accidentally wrapping quotes. **Never remove signed-ID-token verification** to bypass configuration. The Firebase project's Auth and Firestore free quotas are independent of PDF parsing.
 

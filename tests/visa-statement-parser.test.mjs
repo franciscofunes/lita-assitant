@@ -93,6 +93,57 @@ test('Banco Ciudad rejects altered purchase or missing fee/IVA reconciliation', 
   assert.throws(() => parseVisaTextPages(changedTax, 'e'.repeat(64)), /STATEMENT_RECONCILIATION_FAILED/)
 })
 
+// Another synthetic Banco Ciudad layout, covering the K-suffixed vouchers
+// seen in later statements. Figures, merchants and identifiers are invented.
+const ciudadMixedMarkerPages = [
+  [
+    'VISA GOLD PAGINA: 1/2', 'CIERRE ACTUAL: 29 Oct 26',
+    'VENCIMIENTO SALDO $ SALDO U$S PAGO MIN.$ PAGO MIN.U$S',
+    '11 Nov 26 31.210,00 0,00 10.000,00 -,--',
+    'FECHA COMPROBANTE DETALLE DE TRANSACCION PESOS DOLARES',
+    'SALDO ANTERIOR 22.000,00 0,00',
+    '13.10.26 SU PAGO EN PESOS 22.000,00- _',
+    '14.05.25 008301* COMERCIO A Cuota 18/18 10.000,00',
+    '15.08.26 008417* COMERCIO B Cuota 03/18 2.000,00',
+    '08.10.26 000001K PEAJE 123456789012345 3.000,00',
+    '22.10.26 000001K PEAJE 123456789012345 4.000,00',
+    '23.10.26 000001K SERVICIO C 123456789 -0 5.000,00',
+    '23.10.26 000001K SERVICIO D 987654321 -0 6.000,00',
+    'Tarjeta **** Total Consumos de TITULAR OMITIDO 30.000,00 0,00 _',
+    '29.10.26 DB IVA $ 21% 1.000,00 210,00',
+    '29.10.26 COM.ADM.Y LIQ.DE CUENTA 1.000,00',
+    'SALDO ACTUAL $ 31.210,00',
+    'PAGO MINIMO $ 10.000,00',
+    'Consultas en www.bancociudad.com.ar',
+  ],
+  ['PAGINA 2/2', 'Información sobre financiación'],
+]
+
+test('Banco Ciudad mixes star and K receipts, six purchases, dates, and separate fee/IVA', () => {
+  const result = parseVisaTextPages(ciudadMixedMarkerPages, '3'.repeat(64))
+  assert.equal(result.items.length, 6)
+  assert.equal(result.statement.closingDate, '2026-10-29')
+  assert.equal(result.statement.dueDate, '2026-11-11')
+  assert.deepEqual(result.statement.purchases, { ARS: '30000.00', USD: '0.00' })
+  assert.deepEqual(result.statement.totals, { ARS: '31210.00', USD: '0.00' })
+  assert.equal(result.statement.previousCreditArs, '0.00')
+  assert.equal(result.statement.feesArs, '1000.00')
+  assert.equal(result.statement.taxesArs, '210.00')
+  assert.equal(result.items.filter((item) => item.installment).length, 2)
+  assert.deepEqual(result.items.slice(2).map((item) => item.receipt), Array(4).fill('000001'))
+  assert.equal(result.items[4].merchant, 'SERVICIO C')
+  assert.ok(result.items.every((item) => item.includeInCashFlow === false))
+})
+
+test('Banco Ciudad K vouchers cannot bypass reconciliation or layout checks', () => {
+  const mismatch = ciudadMixedMarkerPages.map((lines) => [...lines])
+  mismatch[0][11] = mismatch[0][11].replace('5.000,00', '5.000,01')
+  assert.throws(() => parseVisaTextPages(mismatch, '4'.repeat(64)), /STATEMENT_RECONCILIATION_FAILED/)
+  const unknownMarker = ciudadMixedMarkerPages.map((lines) => [...lines])
+  unknownMarker[0][9] = unknownMarker[0][9].replace('000001K', '000001X')
+  assert.throws(() => parseVisaTextPages(unknownMarker, '5'.repeat(64)), /UNSUPPORTED_PDF_LAYOUT/)
+})
+
 test('Banco Ciudad does not silently assign USD purchases to ARS without column proof', () => {
   const usd = ciudadPages.map((rows) => [...rows])
   usd[0][12] = usd[0][12].replace('0,00 _', '12,00 _')

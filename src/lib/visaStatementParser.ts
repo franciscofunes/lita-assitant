@@ -137,21 +137,27 @@ function parseBancoCiudadVisaTextPages(pages: string[][], fileSha256: string): S
       payment = -decimalCents(paid[1])
       continue
     }
-    const purchase = /^(\d{2})\.(\d{2})\.(\d{2})\s+(\d{6})\*\s+(.+?)\s+([\d.]+,\d{2})\s*$/i.exec(line)
+    // Banco Ciudad prints both * and K authorization markers after the
+    // six-digit receipt. K-suffixed charges are real
+    // purchases, and omitting them breaks the published subtotal.
+    const purchase = /^(\d{2})\.(\d{2})\.(\d{2})\s+(\d{6})\s*([*K])\s+(.+?)\s+([\d.]+,\d{2})\s*$/i.exec(line)
     if (!purchase) {
-      if (/^\d{2}\.\d{2}\.\d{2}\s+\d{6}\*/.test(line)) throw new Error('UNSUPPORTED_PDF_LAYOUT')
+      // Never silently discard a bank transaction merely because its suffix,
+      // layout or amount is unfamiliar.
+      if (/^\d{2}\.\d{2}\.\d{2}\s+\d{6}\s*\S/.test(line)) throw new Error('UNSUPPORTED_PDF_LAYOUT')
       continue
     }
     const purchaseDate = shortDate(purchase[1], purchase[2], purchase[3])
-    const installment = /\bCuota\s+(\d{1,2})\/(\d{1,2})\b/i.exec(purchase[5])
+    const installment = /\bCuota\s+(\d{1,2})\/(\d{1,2})\b/i.exec(purchase[6])
     // Policy numbers and other embedded identifiers aren't necessary for
     // spending categories. Never return them to LTC/Firestore.
     const merchant = cityNormalize(
-      purchase[5].replace(/\bCuota\s+\d{1,2}\/\d{1,2}\b/ig, '')
-        .replace(/(?:\d{7,}[-\d]*)/g, '').replace(/[0-9-]{5,}$/g, ''),
+      purchase[6].replace(/\bCuota\s+\d{1,2}\/\d{1,2}\b/ig, '')
+        .replace(/(?:\d{7,}[-\d]*)/g, '').replace(/\s+-\d+\s*$/g, '')
+        .replace(/[0-9-]{5,}$/g, ''),
     )
     if (!merchant || merchant.length > 90) throw new Error('UNSUPPORTED_PDF_LAYOUT')
-    const arscents = decimalCents(purchase[6])
+    const arscents = decimalCents(purchase[7])
     if (arscents <= 0) throw new Error('UNSUPPORTED_PDF_LAYOUT')
     totals.ARS += arscents
     items.push({

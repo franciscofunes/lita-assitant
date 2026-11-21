@@ -43,7 +43,8 @@ export function parseSpendingVisualReport(raw: unknown): VisualReport | null {
   const currencies: CurrencyReport[] = []
   for (const currency of ['ARS', 'USD'] as const) {
     const details = record(currenciesInput[currency])
-    const expense = record(details?.expense)
+    if (!details) continue
+    const expense = record(details.expense)
     const base = amount(expense?.baseMonthly)
     const low = amount(expense?.lowMonthly)
     const high = amount(expense?.highMonthly)
@@ -60,13 +61,13 @@ export function parseSpendingVisualReport(raw: unknown): VisualReport | null {
       categories: categories.flatMap((row: unknown) => {
         const value = record(row)
         const money = amount(value?.projectedMonthly)
-        return money !== null && typeof value?.category === 'string'
+        return value && money !== null && typeof value.category === 'string'
           ? [{ name: value.category.slice(0, 45), amount: money }] : []
       }).slice(0, 4),
       history: monthly.flatMap((row: unknown) => {
         const value = record(row)
         const month = monthString(value?.month)
-        return month && value?.hasExpenseData === true && amount(value?.expense) !== null
+        return month && value && value.hasExpenseData === true && amount(value.expense) !== null
           ? [{ month, amount: amount(value.expense) as number }] : []
       }).slice(-6),
     })

@@ -54,7 +54,7 @@ export function formatVerifiedSpendingForecast(raw: unknown, question: unknown, 
   const lines: string[] = []
   let valid = 0
   for (const currency of ['ARS', 'USD'] as const) {
-    const entry = asObject(currencies[currency])
+    const entry: Data = asObject(currencies[currency]) || {}
     const expense = asObject(entry?.expense)
     const observed = count(entry?.observedExpenseMonths)
     const projection = expense && observed >= 3 ? expenseScenario(expense, months) : null
@@ -75,7 +75,7 @@ export function formatVerifiedSpendingForecast(raw: unknown, question: unknown, 
       '\n- Basado en ' + observed + ' de seis meses completos con gastos registrados.')
     const categories = Array.isArray(entry?.topCategories) ? entry.topCategories.slice(0, 3) : []
     const breakdown = categories.flatMap((item: unknown) => {
-      const c = asObject(item)
+      const c: Data = asObject(item) || {}
       const monthly = number(c?.projectedMonthly)
       if (monthly === null || typeof c?.category !== 'string') return []
       const safe = c.category.replace(/[\r\n*_\[\]<>]/g, ' ').slice(0, 55).trim()

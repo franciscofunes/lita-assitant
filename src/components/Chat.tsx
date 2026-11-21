@@ -411,8 +411,9 @@ export function Chat() {
         const pending = pendingIllustrationRef.current.get(reply?.requestId)
         if (pending) {
           pendingIllustrationRef.current.delete(reply.requestId)
-          pending.resolve(reply.success === true && reply.image instanceof Blob &&
-            reply.image.type === 'image/png' && reply.image.size <= 8_000_000
+          pending.resolve(reply.success === true && reply.image?.type === 'image/png' &&
+            typeof reply.image?.size === 'number' && reply.image.size > 0 &&
+            reply.image.size <= 8_000_000 && typeof reply.image?.slice === 'function'
             ? reply.image : null)
         }
         return

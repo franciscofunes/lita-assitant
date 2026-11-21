@@ -113,6 +113,7 @@ These commands mirror the scope and PDF regression areas covered by GitHub workf
 
 - [Lita UX #229 — consistent chat, privacy and confirmed conversation deletion](docs/lita-ux-229.md)
 - [Lita Spending Forecast — quick questions, calculations and trusted parent protocol](docs/spending-forecast.md)
+- [Savings answers — verified matching income/expense months, no invented monthly savings](docs/verified-savings-answer.md)
 - [Visual reports — local PNG export, card history and opt-in browser image generation](docs/visual-reports.md)
 - [Architecture and end-to-end diagrams](docs/architecture.md)
 - [Local development, deployment, privacy, troubleshooting](docs/development.md)

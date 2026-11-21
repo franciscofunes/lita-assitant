@@ -24,6 +24,7 @@ import { Streamdown } from 'streamdown'
 import TransactionMarkdownWizard from '@/components/TransactionMarkdownWizard'
 import { requestedFinancialPeriod } from '@/lib/financialPeriods'
 import { requestedSpendingForecast } from '@/lib/spendingForecast'
+import { formatVerifiedSavingsAnswer, requestedSavingsEstimate } from '@/lib/savingsAnswer'
 import { parseCardsVisualReport, parseSpendingVisualReport, type VisualReport } from '@/lib/visualReport'
 import VisualForecastReport from '@/components/VisualForecastReport'
 import { assessFinancialScope } from '@/lib/financialScope'
@@ -774,7 +775,7 @@ export function Chat() {
     const forecast = financialContext?.section === 'transactions' &&
       financialContext?.privacyHidden !== true &&
       assessFinancialScope(question) === 'allowed'
-      ? requestedSpendingForecast(question) : null
+      ? (requestedSpendingForecast(question) || (requestedSavingsEstimate(question) ? { months: 1 } : null)) : null
     if (forecast) {
       event.preventDefault()
       setReadingHistory(true)
@@ -793,6 +794,12 @@ export function Chat() {
           setReadingHistory(false)
           return
         }
+        // The host may change section or privacy state while the request is in flight.
+        if (currentHostContextRef.current?.section !== 'transactions' ||
+          currentHostContextRef.current?.privacyHidden === true) {
+          setReadingHistory(false)
+          return
+        }
         const currencies = projection.currencies as Record<string, {
           expense?: { baseMonthly?: number } | null
         }> | undefined
@@ -808,6 +815,18 @@ export function Chat() {
           return
         }
         setInput('')
+        if (requestedSavingsEstimate(question)) {
+          // Never ask the LLM to invent missing income or confuse a filtered
+          // transaction snapshot with a monthly savings forecast.
+          const answer = formatVerifiedSavingsAnswer(projection, forecast.months)
+          setMessages([
+            ...messages,
+            { id: createChatId(), role: 'user', content: question },
+            { id: createChatId(), role: 'assistant', content: answer },
+          ])
+          setReadingHistory(false)
+          return
+        }
         // Aggregate data only: the iframe never receives full historical records.
         setFinancialContext({
           section: 'transactions',
@@ -981,6 +1000,10 @@ export function Chat() {
     : financialContext?.section === 'banks'
       ? bankForecastPrompts
       : []
+
+  const canAnswerWithoutProvider = financialContext?.section === 'transactions' &&
+    financialContext?.privacyHidden !== true &&
+    Boolean(requestedSpendingForecast(input.trim()) || requestedSavingsEstimate(input.trim()))
 
   const verifiedSpending = financialContext?.section === 'transactions' &&
     financialContext.spendingByCategory?.currency === 'ARS'
@@ -1250,6 +1273,12 @@ export function Chat() {
                           index === messages.length - 1 &&
                           /gast|egres|consum|dinero|presupuesto|categor[ií]a/i.test(
                             [...messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '',
+                          ) &&
+                          !requestedSpendingForecast(
+                            [...messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '',
+                          ) &&
+                          !requestedSavingsEstimate(
+                            [...messages.slice(0, index)].reverse().find((entry) => entry.role === 'user')?.content || '',
                           ) && (
                             <div className="mt-4 rounded-xl border border-emerald-600/25 bg-emerald-50 p-3 text-xs text-slate-800 dark:border-emerald-500/25 dark:bg-emerald-950/20 dark:text-slate-200">
                               <p className="font-semibold text-emerald-800 dark:text-emerald-200">
@@ -1364,9 +1393,9 @@ export function Chat() {
                   event.currentTarget.form?.requestSubmit()
                 }
               }}
-              disabled={isLoading || readingHistory || providerStatus?.ready === false}
+              disabled={isLoading || readingHistory || (providerStatus?.ready === false && !canAnswerWithoutProvider)}
               placeholder={
-                providerStatus?.ready === false
+                providerStatus?.ready === false && !canAnswerWithoutProvider
                   ? 'Esperando un proveedor de IA…'
                   : 'Preguntale a LITA…'
               }
@@ -1390,7 +1419,7 @@ export function Chat() {
               isLoading ||
               readingHistory ||
               !input.trim() ||
-              providerStatus?.ready === false
+              (providerStatus?.ready === false && !canAnswerWithoutProvider)
             }
             className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-lg shadow-violet-950/30 transition hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Enviar mensaje"

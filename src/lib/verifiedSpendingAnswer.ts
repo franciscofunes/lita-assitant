@@ -2,7 +2,6 @@
  * Exact, provider-independent forecast answers from the authenticated LTC
  * aggregate. Never ask a text model to transcribe financial values.
  */
-import { requestedSpendingForecast } from './spendingForecast'
 
 type Currency = 'ARS' | 'USD'
 type Data = Record<string, unknown>
@@ -48,9 +47,8 @@ export function formatVerifiedSpendingForecast(raw: unknown, question: unknown, 
   if (data?.scope !== 'spending-forecast' || !currencies) {
     return 'No recibí un historial verificable de LTC para esta proyección. Abrí Lita desde Transacciones y reintentá.'
   }
-  const parsed = typeof question === 'string' ? requestedSpendingForecast(question) : null
   const months = requestedMonths && Number.isInteger(requestedMonths) &&
-    requestedMonths >= 1 && requestedMonths <= 6 ? requestedMonths : parsed?.months ?? 1
+    requestedMonths >= 1 && requestedMonths <= 6 ? requestedMonths : 1
   const reduction = spendingReduction(question)
   const factor = reduction === null ? 1 : 1 - reduction / 100
   const lines: string[] = []

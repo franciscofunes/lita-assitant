@@ -25,6 +25,7 @@ export default function VisualForecastReport({ report, onClose, onIllustrate }: 
     let cancelled = false
     let url = ''
     setRenderError('')
+    setPreviewUrl('') // Never offer a stale download when changing the report horizon.
     void renderVisualReport(report, report.kind === 'cards' ? 1 : horizon, illustration)
       .then((blob) => {
         if (cancelled) return

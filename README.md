@@ -12,7 +12,7 @@ The **application UI and financial answers are Spanish-language** by design; all
 
 ~~~mermaid
 flowchart LR
-    Person["User"] --> LTC["LTC SPA<br/>Netlify + Firebase Auth"]
+    Person["User"] --> LTC["LTC SPA<br/>Vercel + Firebase Auth"]
     LTC -- "postMessage: context / history / theme" --> Frame["Lita iframe<br/>Next.js client"]
     Frame -- "messages + context" --> Chat["POST /api/chat"]
     Chat --> Policy["Financial scope + answer checks"]
@@ -33,6 +33,7 @@ Lita **does not own or modify** the customer's transaction/portfolio data, and `
 | --- | --- | --- |
 | Chat | Budgeted financial context for Transactions/Portfolio, follow-up-aware conversation and Spanish output validation | **No automatic portfolio writes, general-purpose agent tools, or live web research** |
 | Gastos futuros | Predefined forecast questions, six complete months of read-only expense aggregates from LTC, and bounded nominal scenarios by currency | **No guaranteed future bills, inferred FX rate or automated writes** |
+| Reportes visuales | Locally rendered PNG from validated LTC aggregates: spending 1/3/6 months and recorded historical paid card statements; optional runonweb WebGPU abstract illustration | **Exact Canvas calculations, no image-model financial numbers or external image endpoint** |
 | Provider resilience | Ordered or instance-local round-robin attempts; fallback across configured gateways/providers | Availability, costs and third-party retention depend on provider configuration |
 | Markdown | Streamdown rendering plus LTC transaction Markdown wizard | Text suggestions are not database mutations |
 | Conversation history | Receives and displays user-specific history through the parent iframe protocol | Firestore persistence is performed by LTC |
@@ -112,6 +113,7 @@ These commands mirror the scope and PDF regression areas covered by GitHub workf
 
 - [Lita UX #229 — consistent chat, privacy and confirmed conversation deletion](docs/lita-ux-229.md)
 - [Lita Spending Forecast — quick questions, calculations and trusted parent protocol](docs/spending-forecast.md)
+- [Visual reports — local PNG export, card history and opt-in browser image generation](docs/visual-reports.md)
 - [Architecture and end-to-end diagrams](docs/architecture.md)
 - [Local development, deployment, privacy, troubleshooting](docs/development.md)
 - [AI provider setup](docs/ai-providers.md)

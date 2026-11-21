@@ -38,3 +38,16 @@ npm run build
 ```
 
 Smoke-test with a signed-in user who has 6 expense months but missing income, another with income in all 3 comparable months, a negative monthly balance, and a user with sparse history. Check mobile Android screenshot and chat-history save after a deterministic answer.
+
+## Bimonetary balance: ARS cash flow versus USD assets
+
+The reply now begins with **both ARS and USD**, even if USD has too few expense months to compute savings. It never calls a monthly negative ARS difference "global deficit" or concludes the user is losing savings.
+
+- LTC provides `currencies.USD.incomeObserved` independently of USD expense history: 3+ observed income months yield a weighted monthly income reference; fewer months yield only a **historical income total**, never extrapolated salary.
+- The USD monthly **savings** figure still requires >=3 USD expense months with matching USD income months. A USD salary with no USD spending records is **not** automatically 100% saved.
+- Optional `portfolioBalances.byCurrency` provides aggregated registered ARS/USD Portfolio positions as **stock**, never income, cash-flow savings, or audited liquid balances.
+- The user may fund an ARS shortfall with conversions from USD, but the assistant does not invent a spot rate, reclassify a USD sale as income, or double count the USD Portfolio and Bank accounts.
+- The answer omits distracting expense-category breakdowns to keep the bimonetary comparison near the top on mobile. Categories remain available in the report and dedicated spending questions.
+- The prior optional fields are backward-compatible: if Portfolio access is unavailable, show an explicit unavailable status rather than treating the balance as zero.
+
+Merge the LTC companion PR providing `incomeObserved` and `portfolioBalances` **before** deploying this Lita change; test real authenticated data in both sections, with ARS deficits and sparse USD spending history.

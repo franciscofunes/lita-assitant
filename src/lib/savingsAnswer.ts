@@ -46,142 +46,170 @@ export function requestedSavingsEstimate(question: unknown): boolean {
   return /\b(?:cuanto\s+(?:podria|puedo|podre|voy\s+a|lograria|lograre|ahorraria)?\s*ahorr\w*|ahorro\s+(?:mensual|estimado|posible|potencial)|si\s+mantengo\s+(?:este|el|mi)\s+ritmo\s+de\s+ingresos\s+y\s+gastos|cuanto\s+me\s+(?:quedaria|queda)\s+(?:despues|luego)\s+de\s+(?:los\s+)?gastos)\b/.test(normalized)
 }
 
-type ExpenseMonth = {
-  month: string
-  incomeRecords: number
-  hasExpenseData: boolean
+
+type Summary = {
+  currency: Currency
+  expense: number | null
+  income: number | null
+  verifiedSavings: number | null
+  observedExpenseMonths: number
+  observedIncomeMonths: number
+  incomeRecordedTotal: number | null
+}
+
+const summaryFor = (raw: unknown, currency: Currency): Summary => {
+  const entry: DataRecord = asRecord(raw) || {}
+  const expenseData = asRecord(entry.expense)
+  const incomeData = asRecord(entry?.income)
+  const incomeObserved = asRecord(entry?.incomeObserved)
+  const expense = finiteNonNegative(expenseData?.baseMonthly)
+  const incomeMatched = finiteNonNegative(incomeData?.baseMonthly)
+  const incomeStandalone = finiteNonNegative(incomeObserved?.baseMonthly)
+  const reportedSavings = typeof entry?.possibleMonthlySavings === 'number' &&
+    Number.isFinite(entry.possibleMonthlySavings) ? entry.possibleMonthlySavings : null
+
+  // Same-three-month requirement for actual matched savings. Income from USD
+  // salary months alone must not be treated as "100% USD saved".
+  const months = Array.isArray(entry?.monthly)
+    ? entry.monthly.map(asRecord).filter((row): row is DataRecord => Boolean(row))
+      .filter((row) => validMonth(row.month) && row.hasExpenseData === true).slice(-3)
+    : []
+  const incomeMatchesExpenses = months.length === 3 &&
+    months.every((row) => typeof row.incomeRecords === 'number' && row.incomeRecords > 0)
+  const income = incomeStandalone ?? (incomeMatchesExpenses ? incomeMatched : null)
+  const checkSavings = expense !== null && incomeMatched !== null
+    ? Math.round((incomeMatched - expense) * 100) / 100 : null
+  const verifiedSavings = incomeMatchesExpenses && reportedSavings !== null &&
+    checkSavings !== null && Math.abs(reportedSavings - checkSavings) <= 0.02
+      ? reportedSavings : null
+  const observedExpenseMonths = integer(entry?.observedExpenseMonths) ?? 0
+  const observedIncomeMonths = integer(incomeObserved?.observedIncomeMonths) ??
+    integer(incomeData?.observedIncomeMonths) ?? 0
+
+  return {
+    currency,
+    expense: observedExpenseMonths >= 3 ? expense : null,
+    income,
+    verifiedSavings,
+    observedExpenseMonths,
+    observedIncomeMonths,
+    incomeRecordedTotal: finiteNonNegative(incomeObserved?.totalLastSixMonths),
+  }
+}
+
+const summaryLine = (s: Summary): string => {
+  const code = s.currency
+  if (s.verifiedSavings !== null && s.expense !== null && s.income !== null) {
+    const difference = s.verifiedSavings
+    const label = difference < 0
+      ? 'faltante de caja en ' + code + ' ' + localMoney(Math.abs(difference), code)
+      : 'diferencia favorable en ' + code + ' ' + localMoney(difference, code)
+    return '**' + code + ':** ingresan ' + localMoney(s.income, code) +
+      '/mes; salen ' + localMoney(s.expense, code) + '/mes; **' + label + '**.'
+  }
+
+  const parts: string[] = []
+  if (s.income !== null && s.observedIncomeMonths >= 3) {
+    parts.push('ingresos registrados ≈ ' + localMoney(s.income, code) + '/mes')
+  } else if (s.incomeRecordedTotal !== null && s.observedIncomeMonths > 0) {
+    parts.push('ingresos registrados ' + localMoney(s.incomeRecordedTotal, code) +
+      ' en ' + s.observedIncomeMonths + (s.observedIncomeMonths === 1 ? ' mes' : ' meses') +
+      ' (sin promedio confiable)')
+  } else {
+    parts.push('sin tres meses de ingresos registrados comparables')
+  }
+
+  if (s.expense !== null) {
+    parts.push('gastos ≈ ' + localMoney(s.expense, code) + '/mes')
+  } else {
+    parts.push('sin tres meses con gastos registrados en ' + code)
+  }
+  parts.push('ahorro en ' + code + ' **no calculable**')
+  return '**' + code + ':** ' + parts.join('; ') + '.'
+}
+
+const portfolioLine = (raw: unknown): string => {
+  const record = asRecord(raw)
+  if (!record) return 'No recibí datos del Portfolio desde LTC en esta consulta.'
+  if (record.status !== 'ok') {
+    if (record.status === 'empty') {
+      return 'No hay posiciones cargadas en Portfolio; eso no demuestra que no existan ahorros fuera de LTC.'
+    }
+    return 'No pude consultar saldos completos del Portfolio; no voy a suponer que sean cero.'
+  }
+
+  const byCurrency = asRecord(record.byCurrency)
+  if (!byCurrency) return 'El Portfolio no entregó saldos por moneda verificables.'
+  const parts: string[] = []
+  for (const currency of ['ARS', 'USD'] as const) {
+    const balance = asRecord(byCurrency[currency])
+    const amount = finiteNonNegative(balance?.balance)
+    const count = typeof balance?.positionCount === 'number' ? balance.positionCount : 0
+    if (amount !== null && Number.isInteger(count) && count > 0) {
+      parts.push(currency + ' ' + localMoney(amount, currency) +
+        ' (' + count + (count === 1 ? ' posición' : ' posiciones') + ')')
+    }
+  }
+  if (!parts.length) return 'No pude verificar saldos de posiciones en ARS ni USD.'
+  return '**' + parts.join(' · ') + '**. Saldos cargados por vos, no verificados en tiempo real; pueden incluir inversiones no líquidas.'
 }
 
 export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): string {
   if (![1, 3, 6].includes(horizon)) horizon = 1
   const data = asRecord(raw)
   if (data?.scope !== 'spending-forecast') {
-    return 'No puedo estimar tu ahorro mensual sin los agregados históricos verificados de LTC. Abrí Lita desde **Transacciones** y volvé a consultar.'
+    return 'No puedo estimar tu ahorro bimonetario sin los agregados históricos de LTC. Abrí Lita desde **Transacciones** y volvé a consultar.'
   }
+  const currencies = asRecord(data.currencies)
+  if (!currencies) return 'No recibí los flujos históricos ARS/USD de LTC. No voy a inventar ingresos ni un saldo total.'
 
-  const byCurrency = asRecord(data.currencies)
-  if (!byCurrency) {
-    return 'No recibí datos históricos suficientes de LTC para calcular tu ahorro. No voy a completar ingresos o importes que no conozco.'
-  }
+  const ars = summaryFor(currencies.ARS, 'ARS')
+  const usd = summaryFor(currencies.USD, 'USD')
+  const portfolio = portfolioLine(data.portfolioBalances)
 
-  const sections: string[] = []
-  let validForecasts = 0
-  let savingsAvailable = 0
-
-  for (const currency of ['ARS', 'USD'] as const) {
-    const values = asRecord(byCurrency[currency])
-    if (!values) continue
-    const expense = asRecord(values.expense)
-    const monthlyExpense = finiteNonNegative(expense?.baseMonthly)
-    const observed = integer(values?.observedExpenseMonths)
-
-    if (monthlyExpense === null || observed === null || observed < 3) {
-      continue
-    }
-
-    validForecasts++
-    const income = asRecord(values?.income)
-    const monthlyIncome = finiteNonNegative(income?.baseMonthly)
-    const hostSavings = typeof values?.possibleMonthlySavings === 'number' && Number.isFinite(values.possibleMonthlySavings)
-      ? values.possibleMonthlySavings : null
-    const monthly = Array.isArray(values?.monthly) ? values.monthly
-      .map((row: unknown) => asRecord(row))
-      .filter((row): row is DataRecord => Boolean(row))
-      .filter((row) => validMonth(row.month) && row.hasExpenseData === true)
-      .slice(-3)
-      .map((row): ExpenseMonth => ({
-        month: row.month as string,
-        incomeRecords: typeof row.incomeRecords === 'number' ? row.incomeRecords : 0,
-        hasExpenseData: true,
-      })) : []
-
-    // The host creates savings only if income and expense refer to the same
-    // three recent observed expense months; verify that invariant when months
-    // are provided. Do not compute savings by subtracting visible-view totals.
-    const incomeMonthsMatch = monthly.length === 3 && monthly.every((row) => row.incomeRecords > 0)
-    const savingsCheck = monthlyIncome === null ? null
-      : Math.round((monthlyIncome - monthlyExpense) * 100) / 100
-    const verifiedSavings = hostSavings !== null && savingsCheck !== null &&
-      incomeMonthsMatch && Math.abs(hostSavings - savingsCheck) <= 0.02
-      ? hostSavings
-      : null
-
-    const lines: string[] = []
-
-    if (verifiedSavings !== null) {
-      savingsAvailable++
-      if (verifiedSavings > 0) {
-        lines.push(`**Podrías ahorrar aproximadamente ${localMoney(verifiedSavings, currency)} por mes en ${currency}**, si mantenés el mismo ritmo registrado de ingresos y gastos.`)
-      } else if (verifiedSavings < 0) {
-        lines.push(`**Con este ritmo no habría ahorro mensual en ${currency}: el déficit estimado sería de ${localMoney(Math.abs(verifiedSavings), currency)}.**`)
-      } else {
-        lines.push(`**Tus ingresos y gastos mensuales estimados en ${currency} estarían equilibrados: ahorro estimado ${localMoney(0, currency)}.**`)
-      }
-      lines.push('')
-      lines.push('**Cómo se calculó (promedios mensuales):**')
-      lines.push(`- Ingresos: **${localMoney(monthlyIncome as number, currency)}**`)
-      lines.push(`- Gastos: **${localMoney(monthlyExpense, currency)}**`)
-      lines.push(`- ${verifiedSavings >= 0 ? 'Ahorro' : 'Diferencia negativa'}: **${localMoney(verifiedSavings, currency)}**`)
-      if (horizon > 1) {
-        const multiplied = Math.round(verifiedSavings * horizon * 100) / 100
-        lines.push(`- En **${horizon} meses** al mismo ritmo: **${localMoney(multiplied, currency)}** ${multiplied < 0 ? 'de déficit acumulado' : 'de diferencia acumulada'} (escenario, no garantía).`)
-      }
-    } else {
-      lines.push(`**No puedo estimar cuánto podrías ahorrar por mes en ${currency}** porque faltan ingresos registrados en los mismos tres meses con gastos más recientes.`)
-      lines.push(`- Gasto mensual de referencia: **${localMoney(monthlyExpense, currency)}**.`)
-      const missingIncomeMonths = monthly.filter((row) => row.incomeRecords <= 0).map((row) => row.month)
-      if (missingIncomeMonths.length) {
-        lines.push(`- Faltan ingresos en: **${missingIncomeMonths.join(', ')}**.`)
-      }
-      lines.push('- Para estimar el ahorro necesito ingresos y gastos comparables, no solo totales del período visible.')
-    }
-
-    lines.push('')
-    lines.push(`*Base: ${observed} de 6 meses completos con gastos registrados; se ponderaron los últimos tres meses observados.*`)
-
-    const missingExpense = Array.isArray(values?.missingExpenseMonths)
-      ? values.missingExpenseMonths.filter(validMonth)
-      : []
-    if (missingExpense.length) {
-      lines.push(`*Meses sin gastos registrados: ${missingExpense.join(', ')}. No los traté como gasto cero.*`)
-    }
-
-    // These category projections are subsets of expenses, not additional
-    // amounts to add to them. Never mix them with current visible-view totals.
-    const categories = Array.isArray(values?.topCategories)
-      ? values.topCategories.slice(0, 3).flatMap((entry: unknown) => {
-        const category = asRecord(entry)
-        const monthly = finiteNonNegative(category?.projectedMonthly)
-        return typeof category?.category === 'string' && monthly !== null
-          ? [`- ${category.category.replace(/[\r\n]/g, ' ').slice(0, 60)}: ${localMoney(monthly, currency)}`]
-          : []
-      }) : []
-    if (categories.length) {
-      lines.push('')
-      lines.push('**Categorías con mayor gasto mensual proyectado (ya incluidas en el total):**')
-      lines.push(...categories)
-    }
-
-    sections.push(lines.join('\n'))
-  }
-
-  if (!validForecasts) {
-    return 'Todavía no hay al menos **tres meses completos con gastos registrados** en una misma moneda. No puedo calcular un ahorro mensual fiable. Revisá el historial de ingresos y gastos en Transacciones.'
-  }
-
-  const quality = asRecord(data.quality)
-  const unclassifiedCount = typeof quality?.unclassifiedCount === 'number'
-    ? Math.max(0, Math.floor(quality.unclassifiedCount)) : 0
-  const caveats = [
-    'Se usan **seis meses calendario completos**, no el filtro visible en Transacciones. Son escenarios nominales; no se incluyen inflación ni cambios futuros.',
-    'Un **resumen de tarjeta** cuenta como pago registrado; no se suman nuevamente compras ni líneas de PDF.',
+  const lines = [
+    '**Tu situación es bimonetaria.** Una brecha negativa en pesos **no implica por sí sola que estés perdiendo ahorros**, porque también puede haber ingresos o patrimonio en dólares.',
+    '',
+    '### Flujo mensual registrado (sin convertir monedas)',
+    '- ' + summaryLine(ars),
+    '- ' + summaryLine(usd),
+    '',
+    '### Ahorros y activos registrados en Portfolio',
+    portfolio,
   ]
-  if (unclassifiedCount > 0) {
-    caveats.push(`Hay ${unclassifiedCount} movimiento(s) sin clasificar excluidos del cálculo; el resultado puede estar incompleto.`)
-  }
-  if (savingsAvailable === 0) {
-    caveats.unshift('Para obtener un importe de ahorro, registrá los ingresos correspondientes a los meses comparados en LTC.')
+
+  const knownSavings = [ars, usd].filter((s) => s.verifiedSavings !== null)
+  if (!knownSavings.length) {
+    lines.push('', '**Ahorro mensual total: no calculable** con los ingresos y gastos comparables registrados. No considero los meses sin gastos como gasto cero.')
+  } else if (knownSavings.length === 2) {
+    lines.push('', '**Conclusión:** hay saldos mensuales calculables en ambas monedas, pero **no se suman ARS y USD** sin una cotización explícita.')
+  } else {
+    const remaining = knownSavings[0].currency === 'ARS' ? 'USD' : 'ARS'
+    lines.push('', '**Conclusión:** el resultado de ' + knownSavings[0].currency +
+      ' es solo el flujo de esa moneda. Falta historia comparable de ' +
+      remaining + ' para estimar el ahorro global.')
   }
 
-  return [...sections, '', caveats.map((note) => `*${note}*`).join('\n')].join('\n\n')
+  const supportedIncome = [ars, usd].some((s) => s.income !== null)
+  if (!supportedIncome) lines.push('Necesito ingresos registrados en LTC para calcular la capacidad de ahorro.')
+  if (horizon > 1 && knownSavings.length) {
+    const scenarios = knownSavings.map((s) => {
+      const total = Math.round((s.verifiedSavings as number) * horizon * 100) / 100
+      return s.currency + ' ' + localMoney(total, s.currency)
+    })
+    lines.push('**Escenario a ' + horizon + ' meses:** ' + scenarios.join(' · ') +
+      ' si se mantiene el mismo ritmo; no es una predicción garantizada.')
+  }
+
+  lines.push('',
+    '*No hay cotización ni conversión implícita: para calcular un equivalente global hace falta un tipo de cambio explícito. Vender USD para pagar ARS cambia la composición de los activos, no es un ingreso adicional.*',
+    '*Los saldos de Portfolio son patrimonio registrado, NO ahorro generado en el mes, ni se deben sumar a los saldos de Bancos sin conciliar.*')
+  const quality = asRecord(data.quality)
+  if (typeof quality?.unclassifiedCount === 'number' && quality.unclassifiedCount > 0) {
+    lines.push('*Hay ' + Math.floor(quality.unclassifiedCount) +
+      ' movimientos sin clasificar excluidos; los flujos podrían estar incompletos.*')
+  }
+  lines.push('*Cálculo: seis meses terminados, ponderando los últimos tres observados cuando hay datos suficientes. Los pagos de resúmenes registrados cuentan como egresos; no se duplican las compras del PDF.*')
+
+  return lines.join('\n')
 }

@@ -35,13 +35,13 @@ const data = () => ({
 
 test('the exact screenshot question produces complete amounts, not blank bullets', () => {
   const answer = formatVerifiedSpendingForecast(data(), '¿Cuánto voy a gastar el próximo mes?', 1)
-  assert.match(answer, /^\\*\\*Gastos estimados para el próximo mes/)
+  assert.match(answer, /^\*\*Gastos estimados para el próximo mes/)
   for (const amount of ['3.059.885,31', '2.715.613,61', '3.224.557,31']) {
     assert.ok(answer.includes(amount), amount)
   }
   assert.match(answer, /Resumen tarjeta/)
   assert.match(answer, /USD: sin estimación disponible/)
-  assert.doesNotMatch(answer, /spendingForecast|scenarios\\[|insufficient-data|low.*base.*high|\\bundefined\\b|NaN/)
+  assert.doesNotMatch(answer, /spendingForecast|scenarios\[|insufficient-data|low.*base.*high|\bundefined\b|NaN/)
   assert.doesNotMatch(answer, /registrar los meses faltantes/)
 })
 
@@ -80,8 +80,8 @@ test('missing history never invents expense amounts', () => {
 test('the client and server never route an ordinary expense forecast through AI', () => {
   const chat = readFileSync(new URL('../src/components/Chat.tsx', import.meta.url), 'utf8')
   const route = readFileSync(new URL('../src/app/api/chat/route.ts', import.meta.url), 'utf8')
-  assert.match(chat, /formatVerifiedSpendingForecast\\(projection, question, forecast\\.months\\)/)
-  assert.doesNotMatch(chat, /setPendingForecastPrompt\\(question\\)/)
+  assert.match(chat, /formatVerifiedSpendingForecast\(projection, question, forecast\.months\)/)
+  assert.doesNotMatch(chat, /setPendingForecastPrompt\(question\)/)
   assert.match(route, /X-Lita-Answer-Source': 'verified-spending'/)
   assert.ok(route.indexOf('formatVerifiedSpendingForecast(aggregate') < route.indexOf('const providers = getProviderAttemptOrder()'))
 })

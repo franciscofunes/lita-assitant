@@ -114,7 +114,7 @@ const transactionForecastPrompts = [
   '¿Cuánto voy a gastar el próximo mes?',
   'Proyectá mis gastos de los próximos 3 meses por moneda',
   '¿En qué categorías probablemente gastaré más el mes que viene?',
-  '¿Cuánto podría ahorrar si mantengo este ritmo de ingresos y gastos?',
+  '¿Cuánto podría ahorrar en pesos y dólares con mis ingresos, gastos y Portfolio?',
   'Simulá mis gastos si reduzco mis gastos un 15%',
 ]
 
@@ -803,7 +803,8 @@ export function Chat() {
         const currencies = projection.currencies as Record<string, {
           expense?: { baseMonthly?: number } | null
         }> | undefined
-        if (!Object.values(currencies || {}).some((entry) => typeof entry?.expense?.baseMonthly === 'number')) {
+        if (!requestedSavingsEstimate(question) &&
+          !Object.values(currencies || {}).some((entry) => typeof entry?.expense?.baseMonthly === 'number')) {
           setInput('')
           setMessages([
             ...messages,

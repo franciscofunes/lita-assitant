@@ -74,7 +74,7 @@ test('ARS negative and USD salary positive: never claim overall deficit or hide 
   assert.match(reply, /ARS.*2\.403\.363,29/)
   assert.match(reply, /USD.*5\.500,00/)
   assert.match(reply, /USD.*ahorro en USD \*\*no calculable\*\*/)
-  assert.match(reply, /USD 110\.000,50/)
+  assert.match(reply, /USD US\$\s*110\.000,50/)
   assert.match(reply, /patrimonio en dólares/)
   assert.match(reply, /no implica por sí sola/)
   assert.doesNotMatch(reply, /no habría ahorro mensual|déficit total|estás perdiendo plata/)
@@ -121,7 +121,7 @@ test('negative ARS is cash gap only, not global deficit; no FX rate invented', (
   assert.match(reply, /faltante de caja en ARS/)
   assert.match(reply, /Escenario a 3 meses/)
   assert.match(reply, /ARS/)
-  assert.match(reply, /sin una cotización explícita/)
+  assert.match(reply, /hace falta un tipo de cambio explícito/)
   assert.doesNotMatch(reply, /cotización.*(?:1\.4\d{2}|1\.5\d{2})/)
 })
 

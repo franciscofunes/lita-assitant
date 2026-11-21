@@ -97,7 +97,7 @@ export function parseCardsVisualReport(raw: unknown): VisualReport | null {
   const currencies: CurrencyReport[] = []
   for (const currency of ['ARS', 'USD'] as const) {
     const item = spending.byCurrency.map(record).find((v) => v?.currency === currency)
-    const months = (Array.isArray(item?.months) ? item.months : [])
+    const months = (item && Array.isArray(item.months) ? item.months : [])
       .flatMap((row: unknown) => {
         const value = record(row)
         const month = monthString(value?.month)

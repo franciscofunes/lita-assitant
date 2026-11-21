@@ -1223,6 +1223,11 @@ export function Chat() {
             )}
           </div>
         )}
+        {readingHistory && (
+          <p role="status" className="mx-auto mb-2 w-full max-w-2xl text-xs font-medium text-slate-600 dark:text-slate-300">
+            Consultando movimientos registrados para responder con datos…
+          </p>
+        )}
         <form
           className="mx-auto flex w-full max-w-2xl items-end gap-2"
           onSubmit={submitFinancialMessage}

@@ -83,6 +83,9 @@ type ChatThread = {
 }
 
 const defaultParentOrigins = [
+  'https://llevatuscuentas.vercel.app',
+  'https://lleva-tus-cuentas.vercel.app',
+  // Legacy domain remains accepted for existing bookmarks.
   'https://lleva-tus-cuentas.netlify.app',
   'http://localhost:3000',
 ]

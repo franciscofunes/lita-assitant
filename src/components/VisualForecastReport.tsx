@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Download, Image as ImageIcon, Loader2, Sparkles, X } from 'lucide-react'
+import { createLocalReportArtwork } from '@/lib/localReportArtwork'
 import {
   type ReportHorizon, type VisualReport, renderVisualReport, reportHorizons,
 } from '@/lib/visualReport'
@@ -9,7 +10,7 @@ import {
 type Props = {
   report: VisualReport
   onClose: () => void
-  onIllustrate: (progress: (percent: number) => void) => Promise<Blob | null>
+  onIllustrate: (progress: (percent: number, stage?: string) => void) => Promise<Blob | null>
   checkIllustrationSupport: () => Promise<{ supported: boolean; reason: string }>
 }
 
@@ -29,6 +30,15 @@ export default function VisualForecastReport({ report, onClose, onIllustrate, ch
   const [illustrationError, setIllustrationError] = useState('')
   const [illustrating, setIllustrating] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [imageStage, setImageStage] = useState('runtime')
+  const [applyingArtwork, setApplyingArtwork] = useState(false)
+  const [artworkSource, setArtworkSource] = useState<'canvas' | 'ai' | null>(null)
+  const stages: Record<string, string> = {
+    runtime: 'Preparando motor local',
+    weights: 'Descargando / cargando modelo (~3,4 GB)',
+    generating: 'Generando en GPU',
+    validation: 'Validando el PNG',
+  }
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -103,18 +113,38 @@ export default function VisualForecastReport({ report, onClose, onIllustrate, ch
     setIllustrating(true)
     setIllustrationError('')
     setProgress(0)
+    setImageStage('runtime')
     try {
-      const blob = await onIllustrate((value) => setProgress(value))
+      const blob = await onIllustrate((value, stage) => {
+        setProgress(value)
+        if (stage && ['runtime', 'weights', 'generating', 'validation'].includes(stage)) setImageStage(stage)
+      })
       if (!blob || !blob.type.startsWith('image/') || blob.size > 8_000_000) {
         throw new Error('La ilustración no está disponible en este dispositivo.')
       }
       setIllustration(blob)
+      setArtworkSource('ai')
     } catch (error) {
       const cause = error instanceof Error && error.message.trim()
         ? error.message.slice(0, 500) : 'No se pudo generar la ilustración local.'
       setIllustrationError(cause + ' El reporte PNG normal sigue disponible.')
     } finally {
       setIllustrating(false)
+    }
+  }
+
+  const applyLightweightArtwork = async () => {
+    if (applyingArtwork || illustrating) return
+    setApplyingArtwork(true)
+    try {
+      const image = await createLocalReportArtwork()
+      setIllustration(image)
+      setArtworkSource('canvas')
+      setIllustrationError('')
+    } catch (error) {
+      setIllustrationError(error instanceof Error ? error.message : 'No se pudo preparar el diseño.')
+    } finally {
+      setApplyingArtwork(false)
     }
   }
 
@@ -202,12 +232,25 @@ export default function VisualForecastReport({ report, onClose, onIllustrate, ch
             <button type="button" onClick={() => void addIllustration()} disabled={illustrating || capability !== 'supported'}
               className="mt-3 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-violet-400 px-3 py-2 text-sm font-semibold text-violet-700 disabled:opacity-60 dark:text-violet-200">
               {illustrating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {illustrating ? 'Descargando modelo / generando…' : illustration ? 'Regenerar ilustración' : 'Generar ilustración con IA local'}
+              {illustrating ? 'Descargando modelo / generando…' : artworkSource === 'ai' ? 'Regenerar ilustración con IA' : 'Generar ilustración con IA local'}
             </button>
             {illustrating && <div role="status" className="mt-3 space-y-1">
-              <span className="text-xs">Descargando / generando: {progress}%</span>
+              <span className="text-xs">{stages[imageStage] || 'Procesando'}: {progress}%</span>
               <progress max={100} value={progress} className="block w-full accent-violet-600" />
             </div>}
+            <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                Alternativa sin descarga: textura e ilustración creadas con Canvas, no por IA.
+              </p>
+              <button type="button" onClick={() => void applyLightweightArtwork()} disabled={applyingArtwork || illustrating}
+                className="mt-2 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-800 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-white">
+                {applyingArtwork ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+                {artworkSource === 'canvas' ? 'Actualizar diseño ligero (sin IA)' : 'Aplicar diseño ligero (sin IA)'}
+              </button>
+              {artworkSource && <p role="status" className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                Decoración aplicada: {artworkSource === 'ai' ? 'IA local' : 'Canvas sin IA'}. El PNG descargable se actualiza con esta decoración.
+              </p>}
+            </div>
             {illustrationError && <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{illustrationError}</p>}
           </div>
           <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">

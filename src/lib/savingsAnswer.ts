@@ -46,12 +46,6 @@ export function requestedSavingsEstimate(question: unknown): boolean {
   return /\b(?:cuanto\s+(?:podria|puedo|podre|voy\s+a|lograria|lograre|ahorraria)?\s*ahorr\w*|ahorro\s+(?:mensual|estimado|posible|potencial)|si\s+mantengo\s+(?:este|el|mi)\s+ritmo\s+de\s+ingresos\s+y\s+gastos|cuanto\s+me\s+(?:quedaria|queda)\s+(?:despues|luego)\s+de\s+(?:los\s+)?gastos)\b/.test(normalized)
 }
 
-type ExpenseMonth = {
-  month: string
-  incomeRecords: number
-  hasExpenseData: boolean
-}
-
 
 type Summary = {
   currency: Currency
@@ -71,7 +65,6 @@ const summaryFor = (raw: unknown, currency: Currency): Summary => {
   const expense = finiteNonNegative(expenseData?.baseMonthly)
   const incomeMatched = finiteNonNegative(incomeData?.baseMonthly)
   const incomeStandalone = finiteNonNegative(incomeObserved?.baseMonthly)
-  const income = incomeMatched ?? incomeStandalone
   const reportedSavings = typeof entry?.possibleMonthlySavings === 'number' &&
     Number.isFinite(entry.possibleMonthlySavings) ? entry.possibleMonthlySavings : null
 
@@ -83,6 +76,7 @@ const summaryFor = (raw: unknown, currency: Currency): Summary => {
     : []
   const incomeMatchesExpenses = months.length === 3 &&
     months.every((row) => typeof row.incomeRecords === 'number' && row.incomeRecords > 0)
+  const income = incomeStandalone ?? (incomeMatchesExpenses ? incomeMatched : null)
   const checkSavings = expense !== null && incomeMatched !== null
     ? Math.round((incomeMatched - expense) * 100) / 100 : null
   const verifiedSavings = incomeMatchesExpenses && reportedSavings !== null &&

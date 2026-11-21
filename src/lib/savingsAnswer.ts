@@ -70,7 +70,8 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
 
   for (const currency of ['ARS', 'USD'] as const) {
     const values = asRecord(byCurrency[currency])
-    const expense = asRecord(values?.expense)
+    if (!values) continue
+    const expense = asRecord(values.expense)
     const monthlyExpense = finiteNonNegative(expense?.baseMonthly)
     const observed = integer(values?.observedExpenseMonths)
 

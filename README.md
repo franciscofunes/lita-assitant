@@ -2,9 +2,9 @@
 
 **A focused Next.js companion service for [Lleva Tus Cuentas](https://github.com/franciscofunes/lleva-tus-cuentas).**
 
-[Live LTC app](https://lleva-tus-cuentas.netlify.app/) · [Architecture](docs/architecture.md) · [Development & operations](docs/development.md) · [AI provider notes](docs/ai-providers.md) · [PDF analyzer](docs/card-statement-pdf.md)
+[Live LTC app](https://llevatuscuentas.vercel.app/) · [Architecture](docs/architecture.md) · [Development & operations](docs/development.md) · [AI provider notes](docs/ai-providers.md) · [PDF analyzer](docs/card-statement-pdf.md)
 
-Lita is a **Next.js 13 / React 18 / TypeScript** app deployed on **Vercel**. It is embedded as an iframe inside LTC's React/Netlify application. It provides **bounded financial question answering**, configurable **AI provider fallback**, a transaction Markdown helper and a **deterministic, authenticated digital Visa PDF analyzer**.
+Lita is a **Next.js 13 / React 18 / TypeScript** app deployed on **Vercel**. It is embedded as an iframe inside LTC's React application, hosted on Vercel. It provides **bounded financial question answering**, configurable **AI provider fallback**, a transaction Markdown helper and a **deterministic, authenticated digital Visa PDF analyzer**.
 
 The **application UI and financial answers are Spanish-language** by design; all architecture and developer documentation here is in English.
 
@@ -32,6 +32,7 @@ Lita **does not own or modify** the customer's transaction/portfolio data, and `
 | Area | Implemented behavior | Boundary |
 | --- | --- | --- |
 | Chat | Budgeted financial context for Transactions/Portfolio, follow-up-aware conversation and Spanish output validation | **No automatic portfolio writes, general-purpose agent tools, or live web research** |
+| Gastos futuros | Predefined forecast questions, six complete months of read-only expense aggregates from LTC, and bounded nominal scenarios by currency | **No guaranteed future bills, inferred FX rate or automated writes** |
 | Provider resilience | Ordered or instance-local round-robin attempts; fallback across configured gateways/providers | Availability, costs and third-party retention depend on provider configuration |
 | Markdown | Streamdown rendering plus LTC transaction Markdown wizard | Text suggestions are not database mutations |
 | Conversation history | Receives and displays user-specific history through the parent iframe protocol | Firestore persistence is performed by LTC |
@@ -110,6 +111,7 @@ These commands mirror the scope and PDF regression areas covered by GitHub workf
 ## Documentation
 
 - [Lita UX #229 — consistent chat, privacy and confirmed conversation deletion](docs/lita-ux-229.md)
+- [Lita Spending Forecast — quick questions, calculations and trusted parent protocol](docs/spending-forecast.md)
 - [Architecture and end-to-end diagrams](docs/architecture.md)
 - [Local development, deployment, privacy, troubleshooting](docs/development.md)
 - [AI provider setup](docs/ai-providers.md)

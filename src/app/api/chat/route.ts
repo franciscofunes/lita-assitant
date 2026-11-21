@@ -1,6 +1,7 @@
 import { OpenAIStream, StreamingTextResponse } from 'ai'
 import { LITA_SCOPE_REFUSAL, MAX_LTC_FINANCIAL_PROMPT_CHARS } from '@/lib/financialScope'
 import { isSupportedLtcFinancialSection } from '@/lib/financialSections'
+import { formatVerifiedSavingsAnswer, requestedSavingsEstimate } from '@/lib/savingsAnswer'
 import { assessConversationScope, buildConversationForProvider, sanitizeAssistantOutput } from '@/lib/financialConversation'
 import {
   AiProvider,
@@ -99,7 +100,7 @@ REGLAS DE RESPUESTA (PRIORIDAD ALTA):
 - Para el contexto de scope=forecast-query, spendingForecast es un cálculo DETERMINISTA del historial real de Transacciones de los SEIS meses completos anteriores: usá sus escenarios por moneda como cifras de referencia, sin inventar datos, probabilidades ni cotización. Informá qué meses se observaron, el importe mensual base y el rango bajo/alto, y el horizonte solicitado selectedForecastMonths. Si un período no está en scenarios, podés multiplicar la cifra mensual nominal por ese número de meses dentro de 1 a 6; decilo.
 - Si currencies.ARS/USD.status es insufficient-data, no des pronóstico de esa moneda: explicá que requiere al menos tres meses con salidas registradas. Con partial-history, advertí los missingExpenseMonths explícitamente. Si hay unclassifiedCount > 0, advertí que algunas categorías quedaron fuera y que la estimación puede subestimar los gastos.
 - Si preguntan por categorías futuras, usá topCategories[].projectedMonthly cuando exista: es una extrapolación ponderada de los últimos tres meses con gastos observados; totalLastSixMonths es HISTÓRICO y no debe mostrarse como una predicción. No presupongas que gastos extraordinarios se repetirán.
-- Para simular una reducción porcentual, aplicala únicamente al escenario base de gastos de esa moneda; es un supuesto, no una promesa de ahorro. Para estimar ahorro mensual usá possibleMonthlySavings solo si no es null y explicá que se basa en ingresos y gastos históricos, no en saldos bancarios. No proyectes crecimiento de portfolio ni inflación sin hipótesis aportadas.
+- Para simular una reducción porcentual, aplicala únicamente al escenario base de gastos de esa moneda; es un supuesto, no una promesa de ahorro. Nunca confundas el gasto total del filtro visible con el gasto promedio mensual. No muestres etiquetas de ingresos vacías ni afirmes ahorro sin ingresos registrados en los mismos tres meses de gastos; cuando faltan datos indicá qué meses. Las consultas directas de ahorro sin hipótesis adicionales se calculan de modo determinista antes de llamar al proveedor. No proyectes crecimiento de portfolio ni inflación sin hipótesis aportadas.
 - El rango bajo/alto proviene del mínimo y máximo mensual observado, NO de un intervalo estadístico de confianza. No afirmes haber leído movimientos futuros, gastos fijos no registrados ni cuotas pendientes. Los pagos de resúmenes registrados se incluyen en el flujo de Transacciones; no sumes los renglones PDF, consumos manuales o saldos bancarios como gastos adicionales.
 - En Bancos, si te piden estimar un próximo resumen, monthlyCardSpending permite únicamente un escenario orientativo por moneda a partir de meses registrados, con cantidad de meses y límites; un promedio de resúmenes no determina el próximo cierre, cuotas ni vencimientos. Diferenciá el ciclo abierto de los resúmenes históricos y marcá que faltan compromisos futuros si no constan en el contexto.
 - Nunca afirmes disponer de períodos o movimientos no proporcionados.
@@ -263,6 +264,23 @@ export async function POST(req: Request) {
     return new Response(reply, {
       status: 200,
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Lita-Scope': 'restricted' },
+    })
+  }
+
+  // Defense in depth: direct API callers must not get an invented savings
+  // number from a generative provider when income months are unavailable.
+  // The LTC iframe normally obtains the signed-in aggregate and responds locally.
+  if (requestedSavingsEstimate(mostRecent?.content)) {
+    const context = body.context
+    const aggregate = context?.scope === 'forecast-query' ? context.spendingForecast : null
+    const horizon = Number(context?.selectedForecastMonths)
+    return new Response(formatVerifiedSavingsAnswer(aggregate, horizon), {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Lita-Answer-Source': 'verified-savings',
+        'Cache-Control': 'no-store',
+      },
     })
   }
 

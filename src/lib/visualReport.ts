@@ -44,6 +44,8 @@ export function parseSpendingVisualReport(raw: unknown): VisualReport | null {
   for (const currency of ['ARS', 'USD'] as const) {
     const details = record(currenciesInput[currency])
     if (!details) continue
+    const observed = Number(details.observedExpenseMonths)
+    if (!Number.isInteger(observed) || observed < 3 || observed > 6) continue
     const expense = record(details.expense)
     const base = amount(expense?.baseMonthly)
     const low = amount(expense?.lowMonthly)

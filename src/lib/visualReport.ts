@@ -225,7 +225,8 @@ export async function renderVisualReport(
     text(ctx, '◈', 876, 178, 84, '#a78bfa', 600)
   }
 
-  for (const [index, currency] of (['ARS', 'USD'] as const).entries()) {
+  for (let index = 0; index < 2; index++) {
+    const currency = (['ARS', 'USD'] as const)[index]
     const blockY = 289 + index * 453
     ctx.fillStyle = '#ffffff'
     roundBox(ctx, 34, blockY, 1012, 431, 28)

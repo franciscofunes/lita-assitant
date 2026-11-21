@@ -26,3 +26,12 @@ npm run build
 ```
 
 The GitHub Financial scope workflow executes the added intent tests and builds the Next.js app. Deployment sequence: **LTC host first, Lita second**. Verify the actual Vercel domains, parent-origin configuration and real signed-in data before declaring production ready.
+
+
+## Verified forecast responses (Android truncation regression)
+
+Questions like **«¿Cuánto voy a gastar el próximo mes?»** no longer go through generative providers. Lita receives the signed-in LTC forecast aggregate via the existing trusted iframe bridge and formats the exact low/base/high amounts **deterministically** with `formatVerifiedSpendingForecast`. This is also enforced in `/api/chat` as a fallback against direct requests. This prevents blank bullet-point amounts, interrupted model responses, and leaks of internal names such as `spendingForecast.currencies.ARS.expense.scenarios[1]`.
+
+ARS and USD are displayed separately. Fewer than 3 observed expense months in USD means no USD forecast (missing months are not zero); available ARS figures are still shown immediately. The categories shown are already included in total expenses; they must not be added again. A simple explicit percentage reduction is applied only as an identified hypothetical assumption. Savings and Portfolio positions are separate workflows.
+
+Regression tests: `tests/verified-spending-answer.test.mjs` plus CI Next.js build.

@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Streamdown } from 'streamdown'
 import TransactionMarkdownWizard from '@/components/TransactionMarkdownWizard'
 import { requestedFinancialPeriod } from '@/lib/financialPeriods'
+import { requestedSpendingForecast } from '@/lib/spendingForecast'
 import { assessFinancialScope } from '@/lib/financialScope'
 import { sanitizeAssistantOutput } from '@/lib/financialConversation'
 
@@ -100,6 +101,19 @@ const transactionPrompts = [
   'Resumí mis movimientos actuales',
   '¿En qué se me está yendo más dinero?',
   'Analizá mi balance del período',
+]
+
+const transactionForecastPrompts = [
+  '¿Cuánto voy a gastar el próximo mes?',
+  'Proyectá mis gastos de los próximos 3 meses por moneda',
+  '¿En qué categorías probablemente gastaré más el mes que viene?',
+  '¿Cuánto podría ahorrar si mantengo este ritmo de ingresos y gastos?',
+  'Simulá mis gastos si reduzco mis gastos un 15%',
+]
+
+const bankForecastPrompts = [
+  '¿Cuánto podría venir en mi próximo resumen de tarjeta según los meses registrados?',
+  '¿Qué presupuesto necesitaría para tarjetas el mes que viene, separado en ARS y USD?',
 ]
 
 const portfolioPrompts = [
@@ -285,8 +299,10 @@ export function Chat() {
   const parentOriginRef = useRef<string | null>(null)
   const lastSavedSignatureRef = useRef('')
   const pendingHistoricalRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
+  const pendingForecastRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
   const [readingHistory, setReadingHistory] = useState(false)
   const [pendingHistoricalPrompt, setPendingHistoricalPrompt] = useState<string | null>(null)
+  const [pendingForecastPrompt, setPendingForecastPrompt] = useState<string | null>(null)
   const currentHostContextRef = useRef<FinancialContext | null>(null)
 
   const allowedParentOrigins = useMemo(
@@ -360,6 +376,18 @@ export function Chat() {
       ) {
         currentHostContextRef.current = event.data.payload
         setFinancialContext(event.data.payload)
+        return
+      }
+
+      if (event.data?.type === 'lita:forecast:result') {
+        const reply = event.data.payload
+        const resolve = pendingForecastRef.current.get(reply?.requestId)
+        if (resolve) {
+          pendingForecastRef.current.delete(reply.requestId)
+          resolve(reply.success === true && reply.result && typeof reply.result === 'object'
+            ? reply.result as Record<string, unknown>
+            : { error: String(reply.reason || 'No se pudo calcular la proyección.') })
+        }
         return
       }
 
@@ -609,6 +637,34 @@ export function Chat() {
     })
   }
 
+  const requestForecast = async (): Promise<Record<string, unknown> | null> => {
+    const origin = parentOriginRef.current
+    if (!origin || window.parent === window) return null
+    const requestId = createChatId()
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        pendingForecastRef.current.delete(requestId)
+        resolve(null)
+      }, 10000)
+      pendingForecastRef.current.set(requestId, (value) => {
+        window.clearTimeout(timer)
+        resolve(value)
+      })
+      window.parent.postMessage({ type: 'lita:forecast:request', payload: { requestId } }, origin)
+    })
+  }
+
+  useEffect(() => {
+    if (!pendingForecastPrompt || financialContext?.scope !== 'forecast-query') return
+    const question = pendingForecastPrompt
+    setPendingForecastPrompt(null)
+    append({ role: 'user', content: question })
+      .finally(() => {
+        setFinancialContext(currentHostContextRef.current)
+        setReadingHistory(false)
+      })
+  }, [append, financialContext, pendingForecastPrompt])
+
   // AI SDK 2.x accepts context only at hook initialization, not as an
   // append() option. Render the historical context first, then enqueue the
   // message in this effect so the hook uses the newest body.
@@ -627,6 +683,48 @@ export function Chat() {
     const question = input.trim()
     if (!question || isLoading || readingHistory) {
       event.preventDefault()
+      return
+    }
+    const forecast = financialContext?.section === 'transactions' &&
+      financialContext?.privacyHidden !== true &&
+      assessFinancialScope(question) === 'allowed'
+      ? requestedSpendingForecast(question) : null
+    if (forecast) {
+      event.preventDefault()
+      setReadingHistory(true)
+      try {
+        const projection = await requestForecast()
+        if (!projection || projection.error || projection.scope !== 'spending-forecast') {
+          const errorText = projection?.error
+            ? String(projection.error)
+            : 'No pude consultar el historial para proyectar gastos. Abrí LITA desde Transacciones e intentá de nuevo.'
+          setInput('')
+          setMessages([
+            ...messages,
+            { id: createChatId(), role: 'user', content: question },
+            { id: createChatId(), role: 'assistant', content: errorText },
+          ])
+          setReadingHistory(false)
+          return
+        }
+        setInput('')
+        // Aggregate data only: the iframe never receives full historical records.
+        setFinancialContext({
+          section: 'transactions',
+          scope: 'forecast-query',
+          selectedForecastMonths: forecast.months,
+          spendingForecast: projection,
+        })
+        setPendingForecastPrompt(question)
+      } catch {
+        setInput('')
+        setMessages([
+          ...messages,
+          { id: createChatId(), role: 'user', content: question },
+          { id: createChatId(), role: 'assistant', content: 'No pude completar la proyección. Intentá nuevamente.' },
+        ])
+        setReadingHistory(false)
+      }
       return
     }
     const period = financialContext?.section === 'transactions' &&
@@ -778,6 +876,12 @@ export function Chat() {
           ? banksPrompts
           : genericPrompts
 
+  const forecastPrompts = financialContext?.section === 'transactions'
+    ? transactionForecastPrompts
+    : financialContext?.section === 'banks'
+      ? bankForecastPrompts
+      : []
+
   const verifiedSpending = financialContext?.section === 'transactions' &&
     financialContext.spendingByCategory?.currency === 'ARS'
       ? financialContext.spendingByCategory
@@ -917,6 +1021,29 @@ export function Chat() {
                     <span>Preparar una transacción con Markdown</span>
                     <FileText className="h-4 w-4 shrink-0" />
                   </button>
+                )}
+                {forecastPrompts.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                        Proyecciones y escenarios
+                      </h3>
+                    </div>
+                    <p className="mb-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                      Estimaciones orientativas basadas en tus registros. No son gastos confirmados.
+                    </p>
+                    <div className="grid gap-2">
+                      {forecastPrompts.map((prompt) => (
+                        <button key={prompt} type="button" onClick={() => setInput(prompt)}
+                          disabled={financialContext?.privacyHidden === true}
+                          className="flex min-h-[44px] w-full items-center justify-between gap-3 rounded-xl border border-violet-300 bg-violet-50 px-3.5 py-3 text-left text-sm font-semibold text-violet-900 transition hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-800 dark:bg-slate-900/70 dark:text-violet-200 dark:hover:bg-slate-700">
+                          <span>{prompt}</span>
+                          <Send className="h-4 w-4 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
                 <div className="mt-4 grid gap-2">
                   {quickPrompts.map((prompt) => (

@@ -34,3 +34,12 @@ npm run build
 ```
 
 Merge the LTC host PR **before** the Lita PR. Smoke-test real signed-in transactions, bank statements, an empty account, privacy mode, ARS/USD separation, long category names, Android with no WebGPU, and optional desktop WebGPU generation. The heavyweight image model cannot be tested in GitHub Actions without a compatible GPU.
+
+
+## WebGPU diagnostic and mobile limitations
+
+The *optional* illustrative header is generated with runonweb's Bonsai Image 4B (~3.4 GB) **locally in the user's browser**, not on Vercel. The deterministic Canvas report and PNG download do not depend on AI or WebGPU.
+
+On opening the report Lita requests a **capability preflight** from its trusted LTC iframe parent. If WebGPU is absent, there is no GPU adapter, or browser-reported device memory is less than 8 GB, the button is disabled and the concrete explanation shown. This limit is a conservative LTC heuristic, **not a guaranteed minimum hardware spec from the vendor**. On compatible devices, the button loads the model on demand. Failures from GPU memory, model download, and browser storage arrive as sanitized explanations through `lita:illustration:result.reason` and are displayed, rather than being replaced by "No se pudo generar". Timeouts also have an actionable message.
+
+Users can cross-check support at https://runonweb.ai/models/image on the **same device and browser**. If the official demo also cannot generate an image, local model execution may be unavailable on that hardware. No automatic cloud image generation or provider expense is introduced and no finance data is sent to the model.

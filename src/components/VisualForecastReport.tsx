@@ -10,13 +10,18 @@ type Props = {
   report: VisualReport
   onClose: () => void
   onIllustrate: (progress: (percent: number) => void) => Promise<Blob | null>
+  checkIllustrationSupport: () => Promise<{ supported: boolean; reason: string }>
 }
 
-export default function VisualForecastReport({ report, onClose, onIllustrate }: Props) {
+export default function VisualForecastReport({ report, onClose, onIllustrate, checkIllustrationSupport }: Props) {
   const dialogRef = useRef<HTMLElement | null>(null)
   const closeRef = useRef<HTMLButtonElement | null>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  const checkRef = useRef(checkIllustrationSupport)
+  checkRef.current = checkIllustrationSupport
+  const [capability, setCapability] = useState<'checking' | 'supported' | 'unsupported'>('checking')
+  const [capabilityReason, setCapabilityReason] = useState('')
   const [horizon, setHorizon] = useState<ReportHorizon>(1)
   const [illustration, setIllustration] = useState<Blob | null>(null)
   const [previewUrl, setPreviewUrl] = useState('')
@@ -58,6 +63,22 @@ export default function VisualForecastReport({ report, onClose, onIllustrate }: 
   }, [])
 
   useEffect(() => {
+    let active = true
+    void checkRef.current()
+      .then((result) => {
+        if (!active) return
+        setCapability(result.supported ? 'supported' : 'unsupported')
+        setCapabilityReason(result.reason)
+      })
+      .catch(() => {
+        if (!active) return
+        setCapability('unsupported')
+        setCapabilityReason('No se pudo comprobar la compatibilidad con WebGPU en este navegador.')
+      })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     let url = ''
     setRenderError('')
@@ -78,7 +99,7 @@ export default function VisualForecastReport({ report, onClose, onIllustrate }: 
   }, [report, horizon, illustration])
 
   const addIllustration = async () => {
-    if (illustrating) return
+    if (illustrating || capability !== 'supported') return
     setIllustrating(true)
     setIllustrationError('')
     setProgress(0)
@@ -88,8 +109,10 @@ export default function VisualForecastReport({ report, onClose, onIllustrate }: 
         throw new Error('La ilustración no está disponible en este dispositivo.')
       }
       setIllustration(blob)
-    } catch {
-      setIllustrationError('No se pudo generar la ilustración local. Tu reporte normal sigue disponible.')
+    } catch (error) {
+      const cause = error instanceof Error && error.message.trim()
+        ? error.message.slice(0, 500) : 'No se pudo generar la ilustración local.'
+      setIllustrationError(cause + ' El reporte PNG normal sigue disponible.')
     } finally {
       setIllustrating(false)
     }
@@ -161,10 +184,25 @@ export default function VisualForecastReport({ report, onClose, onIllustrate }: 
               Se usa runonweb (Bonsai Image 4B) solo para decorar el reporte. Descarga aproximada de 3,4 GB;
               requiere WebGPU, una GPU compatible y memoria suficiente. Jamás se envían tus importes ni categorías al modelo.
             </p>
-            <button type="button" onClick={() => void addIllustration()} disabled={illustrating}
+            <div aria-live="polite" className="mt-3 text-xs leading-relaxed">
+              {capability === 'checking'
+                ? <p className="text-slate-600 dark:text-slate-300">Verificando WebGPU y memoria del dispositivo…</p>
+                : capability === 'unsupported'
+                  ? <p role="status" className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-amber-900 dark:text-amber-200">
+                      No disponible en este dispositivo: {capabilityReason}
+                    </p>
+                  : <p className="text-emerald-700 dark:text-emerald-300">
+                      WebGPU y memoria preliminarmente compatibles. La descarga y la generación todavía pueden fallar por espacio o memoria gráfica.
+                    </p>}
+            </div>
+            <a href="https://runonweb.ai/models/image" target="_blank" rel="noopener noreferrer"
+              className="mt-2 inline-block text-xs font-medium text-violet-700 underline underline-offset-2 dark:text-violet-300">
+              Probar el modelo oficial en este navegador
+            </a>
+            <button type="button" onClick={() => void addIllustration()} disabled={illustrating || capability !== 'supported'}
               className="mt-3 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-violet-400 px-3 py-2 text-sm font-semibold text-violet-700 disabled:opacity-60 dark:text-violet-200">
               {illustrating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {illustrating ? 'Generando en este dispositivo…' : illustration ? 'Regenerar ilustración' : 'Generar ilustración con IA local'}
+              {illustrating ? 'Descargando modelo / generando…' : illustration ? 'Regenerar ilustración' : 'Generar ilustración con IA local'}
             </button>
             {illustrating && <div role="status" className="mt-3 space-y-1">
               <span className="text-xs">Descargando / generando: {progress}%</span>

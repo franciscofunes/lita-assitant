@@ -308,9 +308,13 @@ export function Chat() {
   const pendingHistoricalRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
   const pendingForecastRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
   const pendingIllustrationRef = useRef<Map<string, {
-    resolve: (value: Blob | null) => void
+    resolve: (value: Blob) => void
+    reject: (error: Error) => void
     progress: (percent: number) => void
   }>>(new Map())
+  const pendingIllustrationCapabilityRef = useRef<Map<string, (
+    status: { supported: boolean; reason: string }
+  ) => void>>(new Map())
   const [visualReport, setVisualReport] = useState<VisualReport | null>(null)
   const [reportLoading, setReportLoading] = useState(false)
   const [reportError, setReportError] = useState('')
@@ -398,6 +402,19 @@ export function Chat() {
         return
       }
 
+      if (event.data?.type === 'lita:illustration:capability:result') {
+        const reply = event.data.payload
+        const pending = pendingIllustrationCapabilityRef.current.get(reply?.requestId)
+        if (pending) {
+          pendingIllustrationCapabilityRef.current.delete(reply.requestId)
+          pending({
+            supported: reply.supported === true,
+            reason: typeof reply.reason === 'string' ? reply.reason.slice(0, 500) : '',
+          })
+        }
+        return
+      }
+
       if (event.data?.type === 'lita:illustration:progress') {
         const reply = event.data.payload
         const pending = pendingIllustrationRef.current.get(reply?.requestId)
@@ -412,10 +429,15 @@ export function Chat() {
         const pending = pendingIllustrationRef.current.get(reply?.requestId)
         if (pending) {
           pendingIllustrationRef.current.delete(reply.requestId)
-          pending.resolve(reply.success === true && reply.image?.type === 'image/png' &&
+          if (reply.success === true && reply.image?.type === 'image/png' &&
             typeof reply.image?.size === 'number' && reply.image.size > 0 &&
-            reply.image.size <= 8_000_000 && typeof reply.image?.slice === 'function'
-            ? reply.image : null)
+            reply.image.size <= 8_000_000 && typeof reply.image?.slice === 'function') {
+            pending.resolve(reply.image)
+          } else {
+            pending.reject(new Error(typeof reply.reason === 'string'
+              ? reply.reason.slice(0, 500)
+              : 'El dispositivo no devolvió una imagen PNG válida.'))
+          }
         }
         return
       }
@@ -695,20 +717,49 @@ export function Chat() {
     })
   }
 
-  const requestIllustration = async (progress: (percent: number) => void): Promise<Blob | null> => {
+  const checkIllustrationCapability = async (): Promise<{ supported: boolean; reason: string }> => {
     const origin = parentOriginRef.current
-    if (!origin || window.parent === window || currentHostContextRef.current?.privacyHidden === true) return null
+    if (!origin || window.parent === window || currentHostContextRef.current?.privacyHidden === true) {
+      return { supported: false, reason: 'Abrí Lita desde LTC con la sesión activa y los importes visibles.' }
+    }
     const requestId = createChatId()
     return new Promise((resolve) => {
       const timer = window.setTimeout(() => {
+        pendingIllustrationCapabilityRef.current.delete(requestId)
+        resolve({ supported: false, reason: 'LTC no respondió al diagnóstico de WebGPU. Cerrá y volvé a abrir Lita para actualizar ambas aplicaciones.' })
+      }, 10000)
+      pendingIllustrationCapabilityRef.current.set(requestId, (status) => {
+        window.clearTimeout(timer)
+        resolve(status)
+      })
+      window.parent.postMessage({ type: 'lita:illustration:capability:request', payload: { requestId } }, origin)
+    })
+  }
+
+  const requestIllustration = async (progress: (percent: number) => void): Promise<Blob> => {
+    const origin = parentOriginRef.current
+    if (!origin || window.parent === window || currentHostContextRef.current?.privacyHidden === true) {
+      throw new Error('Abrí Lita desde LTC con la sesión activa y los importes visibles.')
+    }
+    const requestId = createChatId()
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
         pendingIllustrationRef.current.delete(requestId)
-        resolve(null)
+        reject(new Error('La generación superó el tiempo de espera. La primera descarga es de ~3,4 GB; verificá la conexión y probá nuevamente desde una computadora.'))
       }, 300000)
       pendingIllustrationRef.current.set(requestId, {
         progress,
+        reject: (error) => {
+          window.clearTimeout(timer)
+          reject(error)
+        },
         resolve: (value) => {
           window.clearTimeout(timer)
-          resolve(currentHostContextRef.current?.privacyHidden === true ? null : value)
+          if (currentHostContextRef.current?.privacyHidden === true) {
+            reject(new Error('El modo privacidad impidió adjuntar la ilustración.'))
+          } else {
+            resolve(value)
+          }
         },
       })
       // Fixed abstract prompt resides only in LTC. Never send financial data to image models.
@@ -1432,7 +1483,7 @@ export function Chat() {
 
       {visualReport && financialContext?.privacyHidden !== true && (
         <VisualForecastReport report={visualReport} onClose={() => setVisualReport(null)}
-          onIllustrate={requestIllustration} />
+          onIllustrate={requestIllustration} checkIllustrationSupport={checkIllustrationCapability} />
       )}
 
       {transactionWizardOpen && (

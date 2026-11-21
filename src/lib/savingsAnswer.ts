@@ -58,8 +58,8 @@ type Summary = {
 }
 
 const summaryFor = (raw: unknown, currency: Currency): Summary => {
-  const entry = asRecord(raw)
-  const expenseData = asRecord(entry?.expense)
+  const entry = asRecord(raw) || {}
+  const expenseData = asRecord(entry.expense)
   const incomeData = asRecord(entry?.income)
   const incomeObserved = asRecord(entry?.incomeObserved)
   const expense = finiteNonNegative(expenseData?.baseMonthly)

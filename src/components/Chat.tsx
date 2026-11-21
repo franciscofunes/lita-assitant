@@ -7,6 +7,7 @@ import {
   DollarSign,
   FileText,
   History,
+  Image as ImageIcon,
   PieChart,
   Plus,
   Send,
@@ -23,6 +24,8 @@ import { Streamdown } from 'streamdown'
 import TransactionMarkdownWizard from '@/components/TransactionMarkdownWizard'
 import { requestedFinancialPeriod } from '@/lib/financialPeriods'
 import { requestedSpendingForecast } from '@/lib/spendingForecast'
+import { parseCardsVisualReport, parseSpendingVisualReport, type VisualReport } from '@/lib/visualReport'
+import VisualForecastReport from '@/components/VisualForecastReport'
 import { assessFinancialScope } from '@/lib/financialScope'
 import { sanitizeAssistantOutput } from '@/lib/financialConversation'
 
@@ -303,6 +306,13 @@ export function Chat() {
   const lastSavedSignatureRef = useRef('')
   const pendingHistoricalRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
   const pendingForecastRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
+  const pendingIllustrationRef = useRef<Map<string, {
+    resolve: (value: Blob | null) => void
+    progress: (percent: number) => void
+  }>>(new Map())
+  const [visualReport, setVisualReport] = useState<VisualReport | null>(null)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportError, setReportError] = useState('')
   const [readingHistory, setReadingHistory] = useState(false)
   const [pendingHistoricalPrompt, setPendingHistoricalPrompt] = useState<string | null>(null)
   const [pendingForecastPrompt, setPendingForecastPrompt] = useState<string | null>(null)
@@ -377,8 +387,35 @@ export function Chat() {
         event.data?.payload &&
         typeof event.data.payload === 'object'
       ) {
+        if (event.data.payload.privacyHidden === true ||
+          currentHostContextRef.current?.section !== event.data.payload.section) {
+          setVisualReport(null)
+          setReportError('')
+        }
         currentHostContextRef.current = event.data.payload
         setFinancialContext(event.data.payload)
+        return
+      }
+
+      if (event.data?.type === 'lita:illustration:progress') {
+        const reply = event.data.payload
+        const pending = pendingIllustrationRef.current.get(reply?.requestId)
+        if (pending && typeof reply.progress === 'number') {
+          pending.progress(Math.max(0, Math.min(100, Math.round(reply.progress))))
+        }
+        return
+      }
+
+      if (event.data?.type === 'lita:illustration:result') {
+        const reply = event.data.payload
+        const pending = pendingIllustrationRef.current.get(reply?.requestId)
+        if (pending) {
+          pendingIllustrationRef.current.delete(reply.requestId)
+          pending.resolve(reply.success === true && reply.image?.type === 'image/png' &&
+            typeof reply.image?.size === 'number' && reply.image.size > 0 &&
+            reply.image.size <= 8_000_000 && typeof reply.image?.slice === 'function'
+            ? reply.image : null)
+        }
         return
       }
 
@@ -655,6 +692,52 @@ export function Chat() {
       })
       window.parent.postMessage({ type: 'lita:forecast:request', payload: { requestId } }, origin)
     })
+  }
+
+  const requestIllustration = async (progress: (percent: number) => void): Promise<Blob | null> => {
+    const origin = parentOriginRef.current
+    if (!origin || window.parent === window || currentHostContextRef.current?.privacyHidden === true) return null
+    const requestId = createChatId()
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        pendingIllustrationRef.current.delete(requestId)
+        resolve(null)
+      }, 300000)
+      pendingIllustrationRef.current.set(requestId, {
+        progress,
+        resolve: (value) => {
+          window.clearTimeout(timer)
+          resolve(currentHostContextRef.current?.privacyHidden === true ? null : value)
+        },
+      })
+      // Fixed abstract prompt resides only in LTC. Never send financial data to image models.
+      window.parent.postMessage({ type: 'lita:illustration:request', payload: { requestId } }, origin)
+    })
+  }
+
+  const openVisualReport = async () => {
+    if (reportLoading || financialContext?.privacyHidden === true) return
+    setReportError('')
+    if (financialContext?.section === 'banks') {
+      const cards = parseCardsVisualReport(financialContext)
+      if (cards) setVisualReport(cards)
+      else setReportError('Necesitás al menos tres meses de resúmenes registrados en una misma moneda para crear el reporte.')
+      return
+    }
+    if (financialContext?.section !== 'transactions') return
+    setReportLoading(true)
+    try {
+      const forecast = await requestForecast()
+      if (currentHostContextRef.current?.privacyHidden === true) return
+      const report = parseSpendingVisualReport(forecast)
+      if (report) setVisualReport(report)
+      else setReportError(forecast?.error ? String(forecast.error) :
+        'Necesitás al menos tres meses completos con gastos registrados en una misma moneda.')
+    } catch {
+      setReportError('No se pudo consultar el historial para crear el reporte.')
+    } finally {
+      setReportLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -942,6 +1025,15 @@ export function Chat() {
           </div>
 
           <div className="flex min-w-0 shrink-0 items-center justify-end gap-2">
+            {(financialContext?.section === 'transactions' || financialContext?.section === 'banks') && (
+              <button type="button" onClick={() => void openVisualReport()}
+                disabled={financialContext?.privacyHidden === true || reportLoading}
+                aria-label="Crear reporte visual de gastos o tarjetas"
+                title="Crear reporte visual (PNG)"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-violet-300 bg-violet-50 text-violet-800 transition hover:bg-violet-100 disabled:opacity-40 dark:border-violet-700 dark:bg-slate-900 dark:text-violet-200">
+                <ImageIcon className="h-4 w-4" />
+              </button>
+            )}
             {financialContext?.section === 'transactions' && (
               <button
                 type="button"
@@ -1011,6 +1103,11 @@ export function Chat() {
           Modo privacidad activo: LITA no recibe los importes ni el historial de esta pantalla. Para analizar tus datos, cerrá el chat y volvé a mostrar los importes en LTC.
         </div>
       )}
+      {reportError && (
+        <div role="alert" className="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-200">
+          {reportError}
+        </div>
+      )}
       <section className="lita-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto px-4 py-4 sm:px-5">
         <div className="mx-auto flex w-full max-w-2xl flex-col">
           {messages.length === 0 && (
@@ -1037,6 +1134,14 @@ export function Chat() {
                     className="mt-4 flex w-full items-center justify-between rounded-xl border border-violet-400/40 bg-violet-500/10 px-3.5 py-3 text-left text-sm font-semibold text-violet-800 transition hover:bg-violet-500/15 dark:text-violet-200">
                     <span>Preparar una transacción con Markdown</span>
                     <FileText className="h-4 w-4 shrink-0" />
+                  </button>
+                )}
+                {(financialContext?.section === 'transactions' || financialContext?.section === 'banks') && (
+                  <button type="button" onClick={() => void openVisualReport()}
+                    disabled={financialContext?.privacyHidden === true || reportLoading}
+                    className="mt-4 flex min-h-[48px] w-full items-center justify-between rounded-xl border border-violet-400 bg-violet-600 px-4 py-3 text-left text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">
+                    <span>{reportLoading ? 'Preparando reporte visual…' : 'Crear reporte visual · PNG'}</span>
+                    <ImageIcon className="h-5 w-5" />
                   </button>
                 )}
                 {forecastPrompts.length > 0 && (
@@ -1294,6 +1399,11 @@ export function Chat() {
           </button>
         </form>
       </footer>
+
+      {visualReport && financialContext?.privacyHidden !== true && (
+        <VisualForecastReport report={visualReport} onClose={() => setVisualReport(null)}
+          onIllustrate={requestIllustration} />
+      )}
 
       {transactionWizardOpen && (
         <TransactionMarkdownWizard

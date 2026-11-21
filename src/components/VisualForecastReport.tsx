@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Download, Image as ImageIcon, Loader2, Sparkles, X } from 'lucide-react'
 import {
   type ReportHorizon, type VisualReport, renderVisualReport, reportHorizons,
@@ -13,6 +13,10 @@ type Props = {
 }
 
 export default function VisualForecastReport({ report, onClose, onIllustrate }: Props) {
+  const dialogRef = useRef<HTMLElement | null>(null)
+  const closeRef = useRef<HTMLButtonElement | null>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
   const [horizon, setHorizon] = useState<ReportHorizon>(1)
   const [illustration, setIllustration] = useState<Blob | null>(null)
   const [previewUrl, setPreviewUrl] = useState('')
@@ -20,6 +24,38 @@ export default function VisualForecastReport({ report, onClose, onIllustrate }: 
   const [illustrationError, setIllustrationError] = useState('')
   const [illustrating, setIllustrating] = useState(false)
   const [progress, setProgress] = useState(0)
+
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    closeRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href]:not([aria-disabled="true"])',
+      ) || [])
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true)
+      previous?.focus()
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -60,7 +96,7 @@ export default function VisualForecastReport({ report, onClose, onIllustrate }: 
   }
 
   return (
-    <section role="dialog" aria-modal="true" aria-labelledby="visual-report-title"
+    <section ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="visual-report-title"
       className="absolute inset-0 z-40 flex min-h-0 flex-col overflow-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
         <div className="min-w-0">
@@ -71,7 +107,7 @@ export default function VisualForecastReport({ report, onClose, onIllustrate }: 
             {report.kind === 'cards' ? 'Tarjetas · referencia histórica' : 'Gastos · escenarios nominales'}
           </p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Cerrar reporte visual"
+        <button ref={closeRef} type="button" onClick={onClose} aria-label="Cerrar reporte visual"
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 dark:border-slate-700">
           <X className="h-5 w-5" />
         </button>

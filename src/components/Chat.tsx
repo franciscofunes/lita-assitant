@@ -710,6 +710,20 @@ export function Chat() {
           setReadingHistory(false)
           return
         }
+        const currencies = projection.currencies as Record<string, {
+          expense?: { baseMonthly?: number } | null
+        }> | undefined
+        if (!Object.values(currencies || {}).some((entry) => typeof entry?.expense?.baseMonthly === 'number')) {
+          setInput('')
+          setMessages([
+            ...messages,
+            { id: createChatId(), role: 'user', content: question },
+            { id: createChatId(), role: 'assistant', content:
+              'Todavía no hay tres meses completos con gastos registrados en una misma moneda dentro de los últimos seis meses. No puedo estimar un importe confiable. Revisá las fechas y categorías de tus movimientos en Transacciones.' },
+          ])
+          setReadingHistory(false)
+          return
+        }
         setInput('')
         // Aggregate data only: the iframe never receives full historical records.
         setFinancialContext({

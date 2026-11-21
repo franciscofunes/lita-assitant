@@ -58,7 +58,7 @@ type Summary = {
 }
 
 const summaryFor = (raw: unknown, currency: Currency): Summary => {
-  const entry = asRecord(raw) || {}
+  const entry: DataRecord = asRecord(raw) || {}
   const expenseData = asRecord(entry.expense)
   const incomeData = asRecord(entry?.income)
   const incomeObserved = asRecord(entry?.incomeObserved)

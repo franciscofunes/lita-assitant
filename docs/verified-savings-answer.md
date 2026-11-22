@@ -51,3 +51,12 @@ The reply now begins with **both ARS and USD**, even if USD has too few expense 
 - The prior optional fields are backward-compatible: if Portfolio access is unavailable, show an explicit unavailable status rather than treating the balance as zero.
 
 Merge the LTC companion PR providing `incomeObserved` and `portfolioBalances` **before** deploying this Lita change; test real authenticated data in both sections, with ARS deficits and sparse USD spending history.
+
+
+## USD: entradas recibidas vs ingreso económico clasificado
+
+La respuesta de ahorro consume, cuando viene en el agregado autenticado de LTC, `currencies.USD.registeredCurrencyInflows` y muestra explícitamente «Entradas de USD registradas en Ingreso divisas» con total, meses y número de registros. Esto resuelve la impresión engañosa de «no hay ingresos USD» cuando el usuario tiene operaciones de entrada de divisas. **No se considera salario, ingreso económico ni ahorro confirmado**, porque una entrada puede ser traslado de una cuenta propia.
+
+Los ingresos propiamente clasificados siguen viniendo de categorías `isExpense:false` con `transactionCurrency:'USD'`, y el cálculo de ahorro sigue necesitando gastos USD comparables durante tres meses. `quality.usdIncomeCurrencyReview` permite explicar si existe una categoría de ingreso actualmente configurada en USD pero operaciones antiguas guardadas como ARS. El sistema muestra una sugerencia de revisión sin corregir o convertir importes automáticamente. Ningún depósito de divisas se suma al Portfolio ni se utiliza como tasa de cambio.
+
+Esta distinción se verifica con `tests/savings-answer.test.mjs`, además del build de Next.js.

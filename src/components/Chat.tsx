@@ -738,7 +738,7 @@ export function Chat() {
     })
   }
 
-  const requestFxQuotes = async (): Promise<FxQuote[]> => {
+  const requestFxQuotes = async (force = false): Promise<FxQuote[]> => {
     const origin = parentOriginRef.current
     if (!origin || window.parent === window ||
         currentHostContextRef.current?.privacyHidden === true ||
@@ -755,13 +755,13 @@ export function Chat() {
       })
       // Request only public prices. Never transmit user balances/transactions
       // to the FX source or include them in the bridge request.
-      window.parent.postMessage({ type: 'lita:fx:request', payload: { requestId } }, origin)
+      window.parent.postMessage({ type: 'lita:fx:request', payload: { requestId, refresh: force } }, origin)
     })
   }
 
   const refreshFxQuotes = async () => {
     setFxStatus('loading')
-    const quotes = await requestFxQuotes()
+    const quotes = await requestFxQuotes(true)
     if (currentHostContextRef.current?.privacyHidden === true ||
         currentHostContextRef.current?.section !== 'transactions') return
     setFxQuotes(quotes)

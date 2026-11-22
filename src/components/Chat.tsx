@@ -738,6 +738,49 @@ export function Chat() {
     })
   }
 
+  const requestFxQuotes = async (): Promise<FxQuote[]> => {
+    const origin = parentOriginRef.current
+    if (!origin || window.parent === window ||
+        currentHostContextRef.current?.privacyHidden === true ||
+        currentHostContextRef.current?.section !== 'transactions') return []
+    const requestId = createChatId()
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        pendingFxRef.current.delete(requestId)
+        resolve([])
+      }, 10000)
+      pendingFxRef.current.set(requestId, (quotes) => {
+        window.clearTimeout(timer)
+        resolve(currentHostContextRef.current?.privacyHidden === true ? [] : quotes)
+      })
+      // Request only public prices. Never transmit user balances/transactions
+      // to the FX source or include them in the bridge request.
+      window.parent.postMessage({ type: 'lita:fx:request', payload: { requestId } }, origin)
+    })
+  }
+
+  const refreshFxQuotes = async () => {
+    setFxStatus('loading')
+    const quotes = await requestFxQuotes()
+    if (currentHostContextRef.current?.privacyHidden === true ||
+        currentHostContextRef.current?.section !== 'transactions') return
+    setFxQuotes(quotes)
+    setFxStatus(quotes.length ? 'ready' : 'unavailable')
+  }
+
+  useEffect(() => {
+    if (!hostConnected || financialContext?.section !== 'transactions' ||
+        financialContext?.privacyHidden === true) return
+    let active = true
+    setFxStatus('loading')
+    void requestFxQuotes().then((quotes) => {
+      if (!active || currentHostContextRef.current?.privacyHidden === true) return
+      setFxQuotes(quotes)
+      setFxStatus(quotes.length ? 'ready' : 'unavailable')
+    })
+    return () => { active = false }
+  }, [hostConnected, financialContext?.section, financialContext?.privacyHidden])
+
   const checkIllustrationCapability = async (): Promise<{ supported: boolean; reason: string }> => {
     const origin = parentOriginRef.current
     if (!origin || window.parent === window || currentHostContextRef.current?.privacyHidden === true) {

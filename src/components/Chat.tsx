@@ -908,7 +908,11 @@ export function Chat() {
         if (requestedSavingsEstimate(question)) {
           // Never ask the LLM to invent missing income or confuse a filtered
           // transaction snapshot with a monthly savings forecast.
-          const answer = formatVerifiedSavingsAnswer(projection, forecast.months)
+          // Spot FX is optional. Never block or fabricate the financial
+          // answer when DolarAPI is offline or the selected market is missing.
+          const marketQuotes = fxQuotes.length ? fxQuotes : await requestFxQuotes()
+          const currentQuote = selectedFxQuote(marketQuotes, fxMarket)
+          const answer = formatVerifiedSavingsAnswer(projection, forecast.months, currentQuote)
           setMessages([
             ...messages,
             { id: createChatId(), role: 'user', content: question },
@@ -1086,6 +1090,8 @@ export function Chat() {
         : financialContext?.section === 'banks'
           ? banksPrompts
           : genericPrompts
+
+  const activeFxQuote = selectedFxQuote(fxQuotes, fxMarket)
 
   const forecastPrompts = financialContext?.section === 'transactions'
     ? transactionForecastPrompts

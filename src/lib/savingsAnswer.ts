@@ -232,8 +232,9 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
     '*Los saldos de Portfolio son patrimonio registrado, NO ahorro generado en el mes, ni se deben sumar a los saldos de Bancos sin conciliar.*')
   const quality = asRecord(data.quality)
   if (typeof quality?.unclassifiedCount === 'number' && quality.unclassifiedCount > 0) {
-    const skipped = Array.isArray(quality?.unclassifiedCategoryNames)
-      ? quality.unclassifiedCategoryNames.filter((v): v is string => typeof v === 'string')
+    const unclassifiedNames = quality.unclassifiedCategoryNames
+    const skipped = Array.isArray(unclassifiedNames)
+      ? unclassifiedNames.filter((v): v is string => typeof v === 'string')
         .map((v) => v.replace(/[^\p{L}\p{N} .-]/gu, ' ').slice(0, 48).trim())
         .filter(Boolean).slice(0, 5) : []
     lines.push('*Hay ' + Math.floor(quality.unclassifiedCount) +
@@ -245,8 +246,9 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
   const reviewCount = typeof usdReview?.records === 'number' && Number.isFinite(usdReview.records)
     ? Math.floor(usdReview.records) : 0
   if (reviewCount > 0) {
-    const categoryNames = Array.isArray(usdReview?.categories)
-      ? usdReview.categories.filter((v): v is string => typeof v === 'string')
+    const reviewNames = usdReview?.categories
+    const categoryNames = Array.isArray(reviewNames)
+      ? reviewNames.filter((v): v is string => typeof v === 'string')
         .map((v) => v.replace(/[^\p{L}\p{N} .-]/gu, ' ').slice(0, 48).trim()).filter(Boolean).slice(0, 5)
       : []
     lines.push('*Revisá la moneda de ' + reviewCount +

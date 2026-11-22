@@ -4,6 +4,8 @@
  * The current visible transaction filter is not an income or monthly-average source.
  */
 
+import { selectedFxQuote, fxMarketLabel, localFxNumber, roundFx, type FxQuote } from './litaFxQuotes'
+
 type Currency = 'ARS' | 'USD'
 type DataRecord = Record<string, unknown>
 
@@ -154,7 +156,7 @@ const portfolioLine = (raw: unknown): string => {
   return '**' + parts.join(' · ') + '**. Saldos cargados por vos, no verificados en tiempo real; pueden incluir inversiones no líquidas.'
 }
 
-export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): string {
+export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1, providedFx: FxQuote | null = null): string {
   if (![1, 3, 6].includes(horizon)) horizon = 1
   const data = asRecord(raw)
   if (data?.scope !== 'spending-forecast') {
@@ -163,6 +165,7 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
   const currencies = asRecord(data.currencies)
   if (!currencies) return 'No recibí los flujos históricos ARS/USD de LTC. No voy a inventar ingresos ni un saldo total.'
 
+  const fx = providedFx && selectedFxQuote([providedFx], providedFx.key)
   const ars = summaryFor(currencies.ARS, 'ARS')
   const usd = summaryFor(currencies.USD, 'USD')
   const portfolio = portfolioLine(data.portfolioBalances)
@@ -208,7 +211,8 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
   if (!knownSavings.length) {
     lines.push('', '**Ahorro mensual total: no calculable** con los ingresos y gastos comparables registrados. No considero los meses sin gastos como gasto cero.')
   } else if (knownSavings.length === 2) {
-    lines.push('', '**Conclusión:** hay saldos mensuales calculables en ambas monedas, pero **no se suman ARS y USD** sin una cotización explícita.')
+    lines.push('', '**Conclusión:** hay saldos mensuales calculables en ambas monedas' +
+      (fx ? ' y una cotización para una equivalencia orientativa.' : ', pero **no se suman ARS y USD** sin una cotización explícita.'))
   } else {
     const remaining = knownSavings[0].currency === 'ARS' ? 'USD' : 'ARS'
     lines.push('', '**Conclusión:** el resultado de ' + knownSavings[0].currency +
@@ -228,7 +232,15 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
   }
 
   lines.push('',
-    '*No hay cotización ni conversión implícita: para calcular un equivalente global hace falta un tipo de cambio explícito. Vender USD para pagar ARS cambia la composición de los activos, no es un ingreso adicional.*',
+    fx
+      ? '*Cotización de referencia: DolarAPI, mercado ' + fxMarketLabel(fx.key) +
+        ', comprador ' + localFxNumber(fx.compra, 'ARS') +
+        ' y vendedor ' + localFxNumber(fx.venta, 'ARS') +
+        ' por USD. Actualizada ' +
+        new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short',
+          timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(fx.updatedAt)) +
+        ' (hora argentina). No es una tasa contractual ni histórica.*'
+      : '*No hay cotización ni conversión implícita: para calcular un equivalente global hace falta un tipo de cambio explícito. Vender USD para pagar ARS cambia la composición de los activos, no es un ingreso adicional.*',
     '*Los saldos de Portfolio son patrimonio registrado, NO ahorro generado en el mes, ni se deben sumar a los saldos de Bancos sin conciliar.*')
   const quality = asRecord(data.quality)
   if (typeof quality?.unclassifiedCount === 'number' && quality.unclassifiedCount > 0) {

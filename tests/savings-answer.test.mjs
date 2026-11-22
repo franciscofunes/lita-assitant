@@ -217,3 +217,12 @@ test('no USD inflow data does not invent currency deposits', () => {
   const reply = formatVerifiedSavingsAnswer(data)
   assert.doesNotMatch(reply, /Entradas de USD registradas en «Ingreso divisas»/)
 })
+
+
+test('unknown historical categories are surfaced for review without HTML injection', () => {
+  const data = aggregate()
+  data.quality.unclassifiedCategoryNames = ['Honorarios Exterior', '<script>evento</script>']
+  const reply = formatVerifiedSavingsAnswer(data)
+  assert.match(reply, /Revisá las categorías: Honorarios Exterior/)
+  assert.doesNotMatch(reply, /<script>/)
+})

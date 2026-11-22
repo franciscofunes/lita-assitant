@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { parseLiveFxQuotes, selectedFxQuote, fxMarketLabel } from '../src/lib/litaFxQuotes.ts'
+import { parseLiveFxQuotes, selectedFxQuote, fxMarketLabel, isFxQuoteLastClose } from '../src/lib/litaFxQuotes.ts'
 import { formatVerifiedSavingsAnswer } from '../src/lib/savingsAnswer.ts'
 
 const now = Date.now()
@@ -55,26 +55,32 @@ test('DolarAPI quote parser accepts only exact market allowlist and valid recent
   const quotes = parseLiveFxQuotes(message([
     rate('blue', 1400, 1460),
     rate('bolsa'),
+    rate('contadoconliqui', 1600, 1630),
     rate('oficial', 1300, 1350),
     rate('fake', 1, 2),
     rate('bolsa', 999, 1000),
     rate('cripto', NaN, 1000),
     rate('cripto', 1000, 0),
   ]), now)
-  assert.deepEqual(quotes.map((q) => q.key), ['bolsa', 'oficial', 'blue'])
+  assert.deepEqual(quotes.map((q) => q.key), ['bolsa', 'contadoconliqui', 'oficial', 'blue'])
   assert.equal(fxMarketLabel('bolsa'), 'MEP')
+  assert.equal(fxMarketLabel('contadoconliqui'), 'CCL')
   assert.equal(selectedFxQuote(quotes, 'bolsa', now)?.compra, 1450)
   assert.equal(selectedFxQuote(quotes, 'cripto', now), null)
 })
 
 test('stale or absent rates, invalid timestamps, and spoofed origin metadata do not produce equivalences', () => {
-  assert.deepEqual(parseLiveFxQuotes(message([rate('bolsa', 1450, 1500, stamp(40 * 3600000))]), now), [])
+  assert.deepEqual(parseLiveFxQuotes(message([rate('bolsa', 1450, 1500, stamp(120 * 3600000))]), now), [])
   assert.deepEqual(parseLiveFxQuotes(message([rate('bolsa', 1450, 1500, 'not a date')]), now), [])
   assert.deepEqual(parseLiveFxQuotes(message([rate('bolsa', 1450, 1500, new Date(now + 3 * 86400000).toISOString())]), now), [])
   assert.deepEqual(parseLiveFxQuotes({ source: 'Other provider', success: true, quotes: [quote] }), [])
   assert.deepEqual(parseLiveFxQuotes({ source: 'DolarAPI', success: false, quotes: [quote] }), [])
   assert.deepEqual(parseLiveFxQuotes({ source: 'DolarAPI', success: true, quotes: [{ ...quote, compra: -5 }] }), [])
-  assert.equal(selectedFxQuote([rate('bolsa', 1450, 1500, stamp(40 * 3600000))], 'bolsa', now), null)
+  assert.equal(selectedFxQuote([rate('bolsa', 1450, 1500, stamp(120 * 3600000))], 'bolsa', now), null)
+  const weekend = rate('contadoconliqui', 1600, 1630, stamp(45 * 3600000))
+  assert.equal(parseLiveFxQuotes(message([weekend]), now).length, 1)
+  assert.equal(isFxQuoteLastClose(weekend, now), true)
+  assert.equal(isFxQuoteLastClose(rate(), now), false)
 })
 
 test('selling USD for ARS uses the BUY price and sums only registered Portfolio positions', () => {
@@ -119,4 +125,14 @@ test('LTC-Lita bridge carries only quote IDs, source and validated prices; finan
   assert.match(chat, /Ver detalles del cálculo y supuestos/)
   assert.match(chat, /formatVerifiedSavingsAnswer\(projection, forecast\.months, currentQuote\)/)
   assert.match(savings, /--- DETALLE DEL CÁLCULO ---/)
+})
+
+
+test('a weekend last-close quote remains usable with an explicit not-live label', () => {
+  const weekend = rate('contadoconliqui', 1700, 1800, stamp(48 * 3600000))
+  const answer = formatVerifiedSavingsAnswer(aggregate(), 1, weekend)
+  assert.match(answer, /Dólar CCL · DolarAPI \(último cierre\)/)
+  assert.match(answer, /del último cierre disponible/)
+  assert.match(answer, /sin actualización reciente/)
+  assert.doesNotMatch(answer, /precio comprador de hoy/)
 })

@@ -1224,6 +1224,43 @@ export function Chat() {
           Modo privacidad activo: LITA no recibe los importes ni el historial de esta pantalla. Para analizar tus datos, cerrá el chat y volvé a mostrar los importes en LTC.
         </div>
       )}
+      {financialContext?.section === 'transactions' && financialContext?.privacyHidden !== true && (
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
+          aria-label="Cotización para equivalencias de ahorro">
+          <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center gap-2">
+            <label htmlFor="lita-fx-market" className="font-semibold text-slate-700 dark:text-slate-200">
+              Equivalencias USD/ARS
+            </label>
+            <select id="lita-fx-market" value={fxMarket}
+              onChange={(event) => setFxMarket(event.target.value as FxMarket)}
+              aria-label="Seleccionar mercado del dólar"
+              className="min-h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-sm font-semibold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+              {FX_MARKETS.map((market) => (
+                <option key={market.key} value={market.key}>{market.label}</option>
+              ))}
+            </select>
+            <span role="status" className="min-w-0 flex-1 text-slate-600 dark:text-slate-300">
+              {activeFxQuote
+                ? 'Compra ' + localFxNumber(activeFxQuote.compra, 'ARS') + ' · ' +
+                  fxMarketLabel(fxMarket) + ' · ' +
+                  new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short',
+                    timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(activeFxQuote.updatedAt))
+                : fxStatus === 'loading' ? 'Consultando DolarAPI…'
+                  : 'Sin cotización vigente disponible'}
+            </span>
+            <button type="button" onClick={() => void refreshFxQuotes()}
+              disabled={fxStatus === 'loading'}
+              className="min-h-10 rounded-lg border border-slate-300 px-3 font-semibold text-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50 dark:border-slate-600 dark:text-violet-200"
+              aria-label="Actualizar cotizaciones del dólar"
+              title="Consultar DolarAPI nuevamente">
+              Actualizar
+            </button>
+          </div>
+          <p className="mx-auto mt-1 max-w-2xl text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+            Se usa precio comprador para valorar USD al venderlos. El mercado elegido se aplica a las próximas respuestas; no altera movimientos ni el Portfolio.
+          </p>
+        </div>
+      )}
       {reportError && (
         <div role="alert" className="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-200">
           {reportError}

@@ -116,7 +116,7 @@ const summaryLine = (s: Summary): string => {
       ' en ' + s.observedIncomeMonths + (s.observedIncomeMonths === 1 ? ' mes' : ' meses') +
       ' (sin promedio confiable)')
   } else {
-    parts.push('sin tres meses de ingresos registrados comparables')
+    parts.push('sin tres meses de ingresos económicos clasificados en esta moneda')
   }
 
   if (s.expense !== null) {
@@ -166,13 +166,39 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
   const ars = summaryFor(currencies.ARS, 'ARS')
   const usd = summaryFor(currencies.USD, 'USD')
   const portfolio = portfolioLine(data.portfolioBalances)
+  const usdEntry = asRecord(currencies.USD)
+  const inflow = asRecord(usdEntry?.registeredCurrencyInflows)
+  const currencyEntryCount = finiteNonNegative(inflow?.records)
+  const currencyEntryMonths = integer(inflow?.observedMonths) ?? 0
+  const currencyEntryTotal = finiteNonNegative(inflow?.totalLastSixMonths)
+  const hasRecordedUsdInflows = inflow?.source === 'ingreso-divisas' &&
+    currencyEntryCount !== null && currencyEntryCount > 0 &&
+    currencyEntryTotal !== null && currencyEntryTotal > 0 && currencyEntryMonths > 0
+
+  const analysisPeriod = typeof data.historyFrom === 'string' &&
+    typeof data.historyThrough === 'string' &&
+    /^20\d{2}-\d{2}-\d{2}$/.test(data.historyFrom) &&
+    /^20\d{2}-\d{2}-\d{2}$/.test(data.historyThrough)
+      ? '_Período del análisis: ' + data.historyFrom + ' al ' + data.historyThrough +
+        ' (se excluye el mes actual incompleto)._'
+      : null
 
   const lines = [
     '**Tu situación es bimonetaria.** Una brecha negativa en pesos **no implica por sí sola que estés perdiendo ahorros**, porque también puede haber ingresos o patrimonio en dólares.',
+    ...(analysisPeriod ? [analysisPeriod] : []),
     '',
     '### Flujo mensual registrado (sin convertir monedas)',
     '- ' + summaryLine(ars),
     '- ' + summaryLine(usd),
+    ...(hasRecordedUsdInflows ? [
+      '- **Entradas de USD registradas en «Ingreso divisas»:** ' +
+        localMoney(currencyEntryTotal as number, 'USD') + ' en ' +
+        currencyEntryMonths + (currencyEntryMonths === 1 ? ' mes' : ' meses') +
+        ' (' + currencyEntryCount + ' movimientos). ' +
+        '**Estas entradas sí están registradas**; no puedo determinar sólo por la categoría ' +
+        'si fueron sueldo, transferencias entre cuentas propias u otros fondos. ' +
+        '**No las sumo al sueldo ni las considero ahorro automáticamente.**',
+    ] : []),
     '',
     '### Ahorros y activos registrados en Portfolio',
     portfolio,
@@ -206,8 +232,30 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
     '*Los saldos de Portfolio son patrimonio registrado, NO ahorro generado en el mes, ni se deben sumar a los saldos de Bancos sin conciliar.*')
   const quality = asRecord(data.quality)
   if (typeof quality?.unclassifiedCount === 'number' && quality.unclassifiedCount > 0) {
+    const unclassifiedNames = quality.unclassifiedCategoryNames
+    const skipped = Array.isArray(unclassifiedNames)
+      ? unclassifiedNames.filter((v): v is string => typeof v === 'string')
+        .map((v) => v.replace(/[^\p{L}\p{N} .-]/gu, ' ').slice(0, 48).trim())
+        .filter(Boolean).slice(0, 5) : []
     lines.push('*Hay ' + Math.floor(quality.unclassifiedCount) +
-      ' movimientos sin clasificar excluidos; los flujos podrían estar incompletos.*')
+      ' movimientos sin clasificar excluidos; los flujos podrían estar incompletos' +
+      (skipped.length ? '. Revisá las categorías: ' + skipped.join(', ') : '') +
+      '.*')
+  }
+  const usdReview = asRecord(quality?.usdIncomeCurrencyReview)
+  const reviewCount = typeof usdReview?.records === 'number' && Number.isFinite(usdReview.records)
+    ? Math.floor(usdReview.records) : 0
+  if (reviewCount > 0) {
+    const reviewNames = usdReview?.categories
+    const categoryNames = Array.isArray(reviewNames)
+      ? reviewNames.filter((v): v is string => typeof v === 'string')
+        .map((v) => v.replace(/[^\p{L}\p{N} .-]/gu, ' ').slice(0, 48).trim()).filter(Boolean).slice(0, 5)
+      : []
+    lines.push('*Revisá la moneda de ' + reviewCount +
+      ' movimientos de ingreso asociados a categorías hoy configuradas en USD, ' +
+      'pero guardados como ARS o sin USD explícito' +
+      (categoryNames.length ? ' (' + categoryNames.join(', ') + ')' : '') +
+      '. No los convertí automáticamente.*')
   }
   lines.push('*Cálculo: seis meses terminados, ponderando los últimos tres observados cuando hay datos suficientes. Los pagos de resúmenes registrados cuentan como egresos; no se duplican las compras del PDF.*')
 

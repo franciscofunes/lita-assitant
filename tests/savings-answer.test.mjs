@@ -111,7 +111,7 @@ test('USD sparse income totals are historical, not turned into an unsupported mo
 test('missing ARS income makes ARS savings unknown while USD stays visible', () => {
   const data = aggregate(null)
   const reply = formatVerifiedSavingsAnswer(data)
-  assert.match(reply, /ARS.*sin tres meses de ingresos registrados comparables/)
+  assert.match(reply, /ARS.*sin tres meses de ingresos económicos clasificados en esta moneda/)
   assert.match(reply, /USD.*5\.500,00/)
   assert.doesNotMatch(reply, /2\.403\.363,29/)
 })
@@ -173,4 +173,56 @@ test('client and API still do not route baseline savings through LLM providers',
   assert.match(route, /X-Lita-Answer-Source': 'verified-savings'/)
   assert.ok(route.indexOf('if (requestedSavingsEstimate(mostRecent?.content))') <
     route.indexOf('const providers = getProviderAttemptOrder()'))
+})
+
+
+test('records arriving USD in Ingreso divisas independently of classified salary and savings', () => {
+  const data = aggregate()
+  data.currencies.USD.incomeObserved = {
+    observedIncomeMonths: 0, totalLastSixMonths: 0, baseMonthly: null,
+  }
+  data.currencies.USD.registeredCurrencyInflows = {
+    source: 'ingreso-divisas', classification: 'unverified-income',
+    observedMonths: 3, totalLastSixMonths: 15000, records: 3,
+    monthly: [
+      { month: '2026-08', amountUsd: 4000, records: 1 },
+      { month: '2026-09', amountUsd: 5500, records: 1 },
+      { month: '2026-10', amountUsd: 5500, records: 1 },
+    ],
+  }
+  const reply = formatVerifiedSavingsAnswer(data)
+  assert.match(reply, /USD.*sin tres meses de ingresos económicos clasificados en esta moneda/)
+  assert.match(reply, /Entradas de USD registradas en «Ingreso divisas»/)
+  assert.match(reply, /15\.000,00 en 3 meses/)
+  assert.match(reply, /Estas entradas sí están registradas/)
+  assert.match(reply, /No las sumo al sueldo ni las considero ahorro automáticamente/)
+  assert.match(reply, /ahorro en USD \*\*no calculable\*\*/)
+  assert.doesNotMatch(reply, /ahorraste .*15\.000/)
+})
+
+test('legacy category configured in USD warns to review recorded ARS snapshot without converting', () => {
+  const data = aggregate()
+  data.quality.usdIncomeCurrencyReview = {
+    records: 2, categories: ['honorarios exterior'],
+  }
+  const reply = formatVerifiedSavingsAnswer(data)
+  assert.match(reply, /Revisá la moneda de 2 movimientos/)
+  assert.match(reply, /honorarios exterior/)
+  assert.match(reply, /No los convertí automáticamente/)
+  assert.doesNotMatch(reply, /ARS a USD/)
+})
+
+test('no USD inflow data does not invent currency deposits', () => {
+  const data = aggregate()
+  const reply = formatVerifiedSavingsAnswer(data)
+  assert.doesNotMatch(reply, /Entradas de USD registradas en «Ingreso divisas»/)
+})
+
+
+test('unknown historical categories are surfaced for review without HTML injection', () => {
+  const data = aggregate()
+  data.quality.unclassifiedCategoryNames = ['Honorarios Exterior', '<script>evento</script>']
+  const reply = formatVerifiedSavingsAnswer(data)
+  assert.match(reply, /Revisá las categorías: Honorarios Exterior/)
+  assert.doesNotMatch(reply, /<script>/)
 })

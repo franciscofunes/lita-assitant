@@ -223,8 +223,14 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
     '*Los saldos de Portfolio son patrimonio registrado, NO ahorro generado en el mes, ni se deben sumar a los saldos de Bancos sin conciliar.*')
   const quality = asRecord(data.quality)
   if (typeof quality?.unclassifiedCount === 'number' && quality.unclassifiedCount > 0) {
+    const skipped = Array.isArray(quality?.unclassifiedCategoryNames)
+      ? quality.unclassifiedCategoryNames.filter((v): v is string => typeof v === 'string')
+        .map((v) => v.replace(/[^\p{L}\p{N} .-]/gu, ' ').slice(0, 48).trim())
+        .filter(Boolean).slice(0, 5) : []
     lines.push('*Hay ' + Math.floor(quality.unclassifiedCount) +
-      ' movimientos sin clasificar excluidos; los flujos podrían estar incompletos.*')
+      ' movimientos sin clasificar excluidos; los flujos podrían estar incompletos' +
+      (skipped.length ? '. Revisá las categorías: ' + skipped.join(', ') : '') +
+      '.*')
   }
   const usdReview = asRecord(quality?.usdIncomeCurrencyReview)
   const reviewCount = typeof usdReview?.records === 'number' && Number.isFinite(usdReview.records)

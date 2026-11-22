@@ -175,8 +175,17 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
     currencyEntryCount !== null && currencyEntryCount > 0 &&
     currencyEntryTotal !== null && currencyEntryTotal > 0 && currencyEntryMonths > 0
 
+  const analysisPeriod = typeof data.historyFrom === 'string' &&
+    typeof data.historyThrough === 'string' &&
+    /^20\d{2}-\d{2}-\d{2}$/.test(data.historyFrom) &&
+    /^20\d{2}-\d{2}-\d{2}$/.test(data.historyThrough)
+      ? '_Período del análisis: ' + data.historyFrom + ' al ' + data.historyThrough +
+        ' (se excluye el mes actual incompleto)._'
+      : null
+
   const lines = [
     '**Tu situación es bimonetaria.** Una brecha negativa en pesos **no implica por sí sola que estés perdiendo ahorros**, porque también puede haber ingresos o patrimonio en dólares.',
+    ...(analysisPeriod ? [analysisPeriod] : []),
     '',
     '### Flujo mensual registrado (sin convertir monedas)',
     '- ' + summaryLine(ars),

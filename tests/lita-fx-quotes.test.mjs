@@ -96,7 +96,7 @@ test('a positive USD savings flow uses compra while a negative USD flow uses ven
   assert.match(positive, /Flujo mensual equivalente de ambas monedas/)
   assert.match(positive, /5\.136\.636,71/)
   const negative = formatVerifiedSavingsAnswer(aggregate(-200), 1, quote)
-  assert.match(negative, /-2\.703\.363,29/)
+  assert.match(negative, /-\$\s*2\.703\.363,29/)
   assert.match(negative, /USD positivo usa comprador y negativo usa vendedor/)
 })
 

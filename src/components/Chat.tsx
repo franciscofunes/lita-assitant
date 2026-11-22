@@ -1365,6 +1365,12 @@ export function Chat() {
               const displayContent = isUser ? message.content :
                 sanitizeAssistantOutput(message.content) ||
                 'La respuesta anterior no contenía un resultado final seguro. Podés pedirle a LITA que continúe el análisis.'
+              const detailSeparator = '\n\n--- DETALLE DEL CÁLCULO ---\n\n'
+              const detailsIndex = isUser ? -1 : displayContent.indexOf(detailSeparator)
+              const compactAnswer = detailsIndex >= 0
+                ? displayContent.slice(0, detailsIndex) : displayContent
+              const methodology = detailsIndex >= 0
+                ? displayContent.slice(detailsIndex + detailSeparator.length) : null
               const isStreamingAssistant =
                 isLoading &&
                 index === messages.length - 1 &&
@@ -1402,8 +1408,20 @@ export function Chat() {
                           caret="circle"
                           isAnimating={isStreamingAssistant}
                         >
-                          {displayContent}
+                          {compactAnswer}
                         </Streamdown>
+                        {methodology && (
+                          <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-900/60">
+                            <summary className="cursor-pointer select-none text-sm font-semibold text-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:text-violet-300">
+                              Ver detalles del cálculo y supuestos
+                            </summary>
+                            <div className="lita-markdown mt-3 min-w-0 text-xs leading-relaxed">
+                              <Streamdown components={markdownComponents}>
+                                {methodology}
+                              </Streamdown>
+                            </div>
+                          </details>
+                        )}
                         {!isLoading && verifiedSpending &&
                           index === messages.length - 1 &&
                           /gast|egres|consum|dinero|presupuesto|categor[ií]a/i.test(

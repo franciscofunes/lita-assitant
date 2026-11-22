@@ -7,6 +7,7 @@
  */
 export const FX_MARKETS = [
   { key: 'bolsa', label: 'MEP' },
+  { key: 'contadoconliqui', label: 'CCL' },
   { key: 'oficial', label: 'Oficial' },
   { key: 'blue', label: 'Blue' },
   { key: 'cripto', label: 'Cripto' },
@@ -20,7 +21,8 @@ export type FxQuote = {
   updatedAt: string
 }
 
-const MAX_AGE_MS = 36 * 3600_000
+const MAX_AGE_MS = 96 * 3600_000
+const LIVE_FRESHNESS_MS = 36 * 3600_000
 const FUTURE_CLOCK_TOLERANCE_MS = 24 * 3600_000
 const keys = new Set<string>(FX_MARKETS.map((market) => market.key))
 
@@ -54,6 +56,10 @@ export function selectedFxQuote(quotes: readonly FxQuote[], market: FxMarket,
   const parsed = parseLiveFxQuotes({ source: 'DolarAPI', success: true, quotes: [exact] }, now)
   return parsed[0] || null
 }
+
+/** A quote from a closed market can still be a bounded reference, not live. */
+export const isFxQuoteLastClose = (quote: FxQuote, now: number = Date.now()): boolean =>
+  now - Date.parse(quote.updatedAt) > LIVE_FRESHNESS_MS
 
 export const fxMarketLabel = (market: FxMarket): string =>
   FX_MARKETS.find((item) => item.key === market)?.label || 'MEP'

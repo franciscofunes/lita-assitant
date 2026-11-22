@@ -119,7 +119,7 @@ test('no quote or invalid quote never invents conversions or a global surplus', 
 test('LTC-Lita bridge carries only quote IDs, source and validated prices; finance fields stay local', () => {
   const chat = readFileSync(new URL('../src/components/Chat.tsx', import.meta.url), 'utf8')
   const savings = readFileSync(new URL('../src/lib/savingsAnswer.ts', import.meta.url), 'utf8')
-  assert.match(chat, /type: 'lita:fx:request', payload: \{ requestId \}/)
+  assert.match(chat, /type: 'lita:fx:request', payload: \{ requestId, refresh: force \}/)
   assert.match(chat, /parseLiveFxQuotes\(reply\)/)
   assert.match(chat, /Seleccionar mercado del dólar/)
   assert.match(chat, /Ver detalles del cálculo y supuestos/)

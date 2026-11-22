@@ -232,7 +232,7 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1): 
   if (reviewCount > 0) {
     const categoryNames = Array.isArray(usdReview?.categories)
       ? usdReview.categories.filter((v): v is string => typeof v === 'string')
-        .map((v) => v.replace(/[\\r\\n*_`\[\]<>]/g, ' ').slice(0, 48).trim()).filter(Boolean).slice(0, 5)
+        .map((v) => v.replace(/[^\p{L}\p{N} .-]/gu, ' ').slice(0, 48).trim()).filter(Boolean).slice(0, 5)
       : []
     lines.push('*Revisá la moneda de ' + reviewCount +
       ' movimientos de ingreso asociados a categorías hoy configuradas en USD, ' +

@@ -4,7 +4,7 @@
  * The current visible transaction filter is not an income or monthly-average source.
  */
 
-import { selectedFxQuote, fxMarketLabel, localFxNumber, roundFx, type FxQuote } from './litaFxQuotes.ts'
+import { selectedFxQuote, fxMarketLabel, localFxNumber, roundFx, isFxQuoteLastClose, type FxQuote } from './litaFxQuotes.ts'
 
 type Currency = 'ARS' | 'USD'
 type DataRecord = Record<string, unknown>
@@ -239,7 +239,9 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1, p
         ' por USD. Actualizada ' +
         new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short',
           timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(fx.updatedAt)) +
-        ' (hora argentina). No es una tasa contractual ni histórica.*'
+        ' (hora argentina)' +
+        (isFxQuoteLastClose(fx) ? ' · último cierre disponible, sin actualización reciente' : '') +
+        '. No es una tasa contractual ni histórica.*'
       : '*No hay cotización ni conversión implícita: para calcular un equivalente global hace falta un tipo de cambio explícito. Vender USD para pagar ARS cambia la composición de los activos, no es un ingreso adicional.*',
     '*Los saldos de Portfolio son patrimonio registrado, NO ahorro generado en el mes, ni se deben sumar a los saldos de Bancos sin conciliar.*')
   const quality = asRecord(data.quality)
@@ -306,7 +308,8 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1, p
     const market = fxMarketLabel(fx.key)
     const date = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short',
       timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(fx.updatedAt))
-    compact.push('**Dólar ' + market + ' · DolarAPI:** comprador ' +
+    compact.push('**Dólar ' + market + ' · DolarAPI' +
+      (isFxQuoteLastClose(fx) ? ' (último cierre)' : '') + ':** comprador ' +
       localFxNumber(fx.compra, 'ARS') + ' / vendedor ' +
       localFxNumber(fx.venta, 'ARS') + ' por USD. Actualizado ' + date + '.')
 
@@ -326,7 +329,9 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1, p
     if (ars.verifiedSavings !== null && ars.verifiedSavings < 0) {
       compact.push('**Equivalente del faltante mensual en pesos:** ' +
         localFxNumber(roundFx(Math.abs(ars.verifiedSavings) / fx.compra), 'USD') +
-        ' si se vendieran USD al precio comprador de hoy; **no es una conversión realizada ni un déficit patrimonial**.')
+        ' si se vendieran USD al precio comprador ' +
+        (isFxQuoteLastClose(fx) ? 'del último cierre disponible' : 'de hoy') +
+        '; **no es una conversión realizada ni un déficit patrimonial**.')
     }
     if (ars.verifiedSavings !== null && usd.verifiedSavings !== null) {
       // When selling surplus USD use compra; when funding negative USD cash flow

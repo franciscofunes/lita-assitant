@@ -271,5 +271,81 @@ export function formatVerifiedSavingsAnswer(raw: unknown, horizon: number = 1, p
   }
   lines.push('*Cálculo: seis meses terminados, ponderando los últimos tres observados cuando hay datos suficientes. Los pagos de resúmenes registrados cuentan como egresos; no se duplican las compras del PDF.*')
 
-  return lines.join('\n')
+  // First screen: a short financial overview. Methodological notes are
+  // rendered as a native disclosure in the chat, including saved conversations.
+  const compact: string[] = [
+    '**Tu situación es bimonetaria.** Una brecha negativa en pesos **no implica por sí sola que estés perdiendo ahorros**, porque también puede haber ingresos o patrimonio en dólares.',
+    '',
+    '### Flujo mensual',
+    '- ' + summaryLine(ars),
+    '- ' + summaryLine(usd),
+  ]
+
+  if (hasRecordedUsdInflows) {
+    compact.push('- **Entradas de divisas:** ' +
+      localMoney(currencyEntryTotal as number, 'USD') +
+      ' registradas en ' + currencyEntryMonths +
+      (currencyEntryMonths === 1 ? ' mes' : ' meses') +
+      '. Son entradas de fondos; **no se consideran automáticamente sueldo ni ahorro**.')
+  }
+
+  const portfolioData = asRecord(data.portfolioBalances)
+  const holdings = asRecord(portfolioData?.byCurrency)
+  const usdHoldings = asRecord(holdings?.USD)
+  const arsHoldings = asRecord(holdings?.ARS)
+  const portfolioUsd = portfolioData?.status === 'ok' &&
+    typeof usdHoldings?.positionCount === 'number' && usdHoldings.positionCount > 0
+      ? finiteNonNegative(usdHoldings.balance) : null
+  const portfolioArs = portfolioData?.status === 'ok' &&
+    typeof arsHoldings?.positionCount === 'number' && arsHoldings.positionCount > 0
+      ? finiteNonNegative(arsHoldings.balance) : null
+
+  compact.push('', '### Portfolio registrado', portfolio)
+
+  if (fx) {
+    const market = fxMarketLabel(fx.key)
+    const date = new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short',
+      timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(fx.updatedAt))
+    compact.push('**Dólar ' + market + ' · DolarAPI:** comprador ' +
+      localFxNumber(fx.compra, 'ARS') + ' / vendedor ' +
+      localFxNumber(fx.venta, 'ARS') + ' por USD. Actualizado ' + date + '.')
+
+    if (portfolioUsd !== null && Number.isFinite(portfolioUsd * fx.compra) &&
+      portfolioUsd * fx.compra <= 1e15) {
+      const converted = roundFx(portfolioUsd * fx.compra)
+      compact.push('**Equivalente orientativo de posiciones USD del Portfolio:** ' +
+        localFxNumber(converted, 'ARS') +
+        ' (solo posiciones USD, a precio **comprador**).')
+      if (portfolioArs !== null && Number.isFinite(converted + portfolioArs) &&
+        converted + portfolioArs <= 1e15) {
+        compact.push('**Portfolio registrado expresado en ARS:** ' +
+          localFxNumber(roundFx(converted + portfolioArs), 'ARS') +
+          ' (ARS registrados + equivalencia de posiciones USD; **no incluye Bancos**).')
+      }
+    }
+    if (ars.verifiedSavings !== null && ars.verifiedSavings < 0) {
+      compact.push('**Equivalente del faltante mensual en pesos:** ' +
+        localFxNumber(roundFx(Math.abs(ars.verifiedSavings) / fx.compra), 'USD') +
+        ' si se vendieran USD al precio comprador de hoy; **no es una conversión realizada ni un déficit patrimonial**.')
+    }
+    if (ars.verifiedSavings !== null && usd.verifiedSavings !== null) {
+      // When selling surplus USD use compra; when funding negative USD cash flow
+      // in pesos use venta. Missing USD income/expense must never become zero.
+      const usdInArs = usd.verifiedSavings >= 0
+        ? usd.verifiedSavings * fx.compra : usd.verifiedSavings * fx.venta
+      const total = ars.verifiedSavings + usdInArs
+      if (Number.isFinite(total) && Math.abs(total) <= 1e15) {
+        compact.push('**Flujo mensual equivalente de ambas monedas:** ' +
+          localFxNumber(roundFx(total), 'ARS') +
+          ' (hipótesis de conversión; USD positivo usa comprador y negativo usa vendedor).')
+      }
+    } else {
+      compact.push('_El flujo total de ahorro sigue sin poder estimarse si faltan gastos o ingresos comparables en USD. Una cotización no reemplaza registros faltantes._')
+    }
+  } else {
+    compact.push('_Sin cotización vigente verificada: no convierto ARS y USD ni invento un total combinado._')
+  }
+
+  compact.push('', '--- DETALLE DEL CÁLCULO ---', '', ...lines.slice(1))
+  return compact.join('\n')
 }

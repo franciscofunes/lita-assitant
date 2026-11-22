@@ -16,8 +16,12 @@ on:
       - 'tests/ltc-advice.test.mjs'
       - 'src/lib/financialPeriods.ts'
       - 'src/lib/spendingForecast.ts'
+      - 'src/lib/verifiedSpendingAnswer.ts'
+      - 'src/lib/localReportArtwork.ts'
       - 'src/lib/savingsAnswer.ts'
       - 'tests/spending-forecast.test.mjs'
+      - 'tests/verified-spending-answer.test.mjs'
+      - 'tests/report-artwork-fallback.test.mjs'
       - 'tests/savings-answer.test.mjs'
       - 'tests/visual-report.test.mjs'
       - 'tests/illustration-diagnostics.test.mjs'
@@ -48,8 +52,12 @@ on:
       - 'tests/ltc-advice.test.mjs'
       - 'src/lib/financialPeriods.ts'
       - 'src/lib/spendingForecast.ts'
+      - 'src/lib/verifiedSpendingAnswer.ts'
+      - 'src/lib/localReportArtwork.ts'
       - 'src/lib/savingsAnswer.ts'
       - 'tests/spending-forecast.test.mjs'
+      - 'tests/verified-spending-answer.test.mjs'
+      - 'tests/report-artwork-fallback.test.mjs'
       - 'tests/savings-answer.test.mjs'
       - 'tests/visual-report.test.mjs'
       - 'tests/illustration-diagnostics.test.mjs'
@@ -70,6 +78,6 @@ jobs:
         with:
           node-version: '24'
       - name: Run domain and history date tests
-        run: node --test tests/bank-context.test.mjs tests/ltc-advice.test.mjs tests/ltc-places.test.mjs tests/finance-scope.test.mjs tests/financial-conversation.test.mjs tests/transaction-wizard.test.mjs tests/lita-ux-consistency.test.mjs tests/spending-forecast.test.mjs tests/visual-report.test.mjs tests/savings-answer.test.mjs tests/illustration-diagnostics.test.mjs
+        run: node --test tests/bank-context.test.mjs tests/ltc-advice.test.mjs tests/ltc-places.test.mjs tests/finance-scope.test.mjs tests/financial-conversation.test.mjs tests/transaction-wizard.test.mjs tests/lita-ux-consistency.test.mjs tests/spending-forecast.test.mjs tests/visual-report.test.mjs tests/savings-answer.test.mjs tests/illustration-diagnostics.test.mjs tests/verified-spending-answer.test.mjs tests/report-artwork-fallback.test.mjs
       - name: Install dependencies and build Lita
         run: npm ci --ignore-scripts --no-audit --no-fund && npm run build

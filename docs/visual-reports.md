@@ -43,3 +43,12 @@ The *optional* illustrative header is generated with runonweb's Bonsai Image 4B 
 On opening the report Lita requests a **capability preflight** from its trusted LTC iframe parent. If WebGPU is absent, there is no GPU adapter, or browser-reported device memory is less than 8 GB, the button is disabled and the concrete explanation shown. This limit is a conservative LTC heuristic, **not a guaranteed minimum hardware spec from the vendor**. On compatible devices, the button loads the model on demand. Failures from GPU memory, model download, and browser storage arrive as sanitized explanations through `lita:illustration:result.reason` and are displayed, rather than being replaced by "No se pudo generar". Timeouts also have an actionable message.
 
 Users can cross-check support at https://runonweb.ai/models/image on the **same device and browser**. If the official demo also cannot generate an image, local model execution may be unavailable on that hardware. No automatic cloud image generation or provider expense is introduced and no finance data is sent to the model.
+
+
+## Failure-phase diagnostics and no-AI decoration
+
+A WebGPU adapter is only a preflight; it cannot verify whether the **Bonsai Image 4B** model can download and load all weights and execute on the GPU. LTC now sends the permitted stages `runtime`, `weights`, `generating`, and `validation` with sanitized progress, and returns failure descriptions identifying the stage, rather than claiming that all WebGPU-compatible phones can run the model. The runtime does not transmit the user's values or categories.
+
+The report also offers **«Aplicar diseño ligero (sin IA)»** via `src/lib/localReportArtwork.ts`, a 512×512 deterministic, textured Canvas decoration with gradients and gentle relief. It requires no model, no external requests, and no WebGPU. This is **never labeled generative AI**. Both options decorate only the reserved report header: finance amounts and diagrams stay Canvas-computed. The ordinary PNG remains usable without any decoration.
+
+Browser GPU execution of the 3.4 GB model is not tested in CI; use the same-device official demo and a real phone/desktop test.

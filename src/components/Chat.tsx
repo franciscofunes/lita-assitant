@@ -24,6 +24,7 @@ import { Streamdown } from 'streamdown'
 import TransactionMarkdownWizard from '@/components/TransactionMarkdownWizard'
 import { requestedFinancialPeriod } from '@/lib/financialPeriods'
 import { requestedSpendingForecast } from '@/lib/spendingForecast'
+import { formatVerifiedSpendingForecast } from '@/lib/verifiedSpendingAnswer'
 import { formatVerifiedSavingsAnswer, requestedSavingsEstimate } from '@/lib/savingsAnswer'
 import { parseCardsVisualReport, parseSpendingVisualReport, type VisualReport } from '@/lib/visualReport'
 import VisualForecastReport from '@/components/VisualForecastReport'
@@ -310,7 +311,7 @@ export function Chat() {
   const pendingIllustrationRef = useRef<Map<string, {
     resolve: (value: Blob) => void
     reject: (error: Error) => void
-    progress: (percent: number) => void
+    progress: (percent: number, stage?: string) => void
   }>>(new Map())
   const pendingIllustrationCapabilityRef = useRef<Map<string, (
     status: { supported: boolean; reason: string }
@@ -320,7 +321,6 @@ export function Chat() {
   const [reportError, setReportError] = useState('')
   const [readingHistory, setReadingHistory] = useState(false)
   const [pendingHistoricalPrompt, setPendingHistoricalPrompt] = useState<string | null>(null)
-  const [pendingForecastPrompt, setPendingForecastPrompt] = useState<string | null>(null)
   const currentHostContextRef = useRef<FinancialContext | null>(null)
 
   const allowedParentOrigins = useMemo(
@@ -419,7 +419,9 @@ export function Chat() {
         const reply = event.data.payload
         const pending = pendingIllustrationRef.current.get(reply?.requestId)
         if (pending && typeof reply.progress === 'number') {
-          pending.progress(Math.max(0, Math.min(100, Math.round(reply.progress))))
+          const stage = ['runtime', 'weights', 'generating', 'validation'].includes(reply.stage)
+            ? reply.stage as string : undefined
+          pending.progress(Math.max(0, Math.min(100, Math.round(reply.progress))), stage)
         }
         return
       }
@@ -736,7 +738,7 @@ export function Chat() {
     })
   }
 
-  const requestIllustration = async (progress: (percent: number) => void): Promise<Blob> => {
+  const requestIllustration = async (progress: (percent: number, stage?: string) => void): Promise<Blob> => {
     const origin = parentOriginRef.current
     if (!origin || window.parent === window || currentHostContextRef.current?.privacyHidden === true) {
       throw new Error('Abrí Lita desde LTC con la sesión activa y los importes visibles.')
@@ -792,17 +794,6 @@ export function Chat() {
     }
   }
 
-  useEffect(() => {
-    if (!pendingForecastPrompt || financialContext?.scope !== 'forecast-query') return
-    const question = pendingForecastPrompt
-    setPendingForecastPrompt(null)
-    append({ role: 'user', content: question })
-      .finally(() => {
-        setFinancialContext(currentHostContextRef.current)
-        setReadingHistory(false)
-      })
-  }, [append, financialContext, pendingForecastPrompt])
-
   // AI SDK 2.x accepts context only at hook initialization, not as an
   // append() option. Render the historical context first, then enqueue the
   // message in this effect so the hook uses the newest body.
@@ -851,21 +842,6 @@ export function Chat() {
           setReadingHistory(false)
           return
         }
-        const currencies = projection.currencies as Record<string, {
-          expense?: { baseMonthly?: number } | null
-        }> | undefined
-        if (!requestedSavingsEstimate(question) &&
-          !Object.values(currencies || {}).some((entry) => typeof entry?.expense?.baseMonthly === 'number')) {
-          setInput('')
-          setMessages([
-            ...messages,
-            { id: createChatId(), role: 'user', content: question },
-            { id: createChatId(), role: 'assistant', content:
-              'Todavía no hay tres meses completos con gastos registrados en una misma moneda dentro de los últimos seis meses. No puedo estimar un importe confiable. Revisá las fechas y categorías de tus movimientos en Transacciones.' },
-          ])
-          setReadingHistory(false)
-          return
-        }
         setInput('')
         if (requestedSavingsEstimate(question)) {
           // Never ask the LLM to invent missing income or confuse a filtered
@@ -879,14 +855,16 @@ export function Chat() {
           setReadingHistory(false)
           return
         }
-        // Aggregate data only: the iframe never receives full historical records.
-        setFinancialContext({
-          section: 'transactions',
-          scope: 'forecast-query',
-          selectedForecastMonths: forecast.months,
-          spendingForecast: projection,
-        })
-        setPendingForecastPrompt(question)
+        // Use exactly the same verified LTC numbers in the chat and in the
+        // Canvas report. Text-model streaming caused blank bullets and exposed
+        // internal field paths to the user on Android.
+        const answer = formatVerifiedSpendingForecast(projection, question, forecast.months)
+        setMessages([
+          ...messages,
+          { id: createChatId(), role: 'user', content: question },
+          { id: createChatId(), role: 'assistant', content: answer },
+        ])
+        setReadingHistory(false)
       } catch {
         setInput('')
         setMessages([

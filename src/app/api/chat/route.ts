@@ -2,6 +2,8 @@ import { OpenAIStream, StreamingTextResponse } from 'ai'
 import { LITA_SCOPE_REFUSAL, MAX_LTC_FINANCIAL_PROMPT_CHARS } from '@/lib/financialScope'
 import { isSupportedLtcFinancialSection } from '@/lib/financialSections'
 import { formatVerifiedSavingsAnswer, requestedSavingsEstimate } from '@/lib/savingsAnswer'
+import { requestedSpendingForecast } from '@/lib/spendingForecast'
+import { formatVerifiedSpendingForecast } from '@/lib/verifiedSpendingAnswer'
 import { assessConversationScope, buildConversationForProvider, sanitizeAssistantOutput } from '@/lib/financialConversation'
 import {
   AiProvider,
@@ -279,6 +281,23 @@ export async function POST(req: Request) {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'X-Lita-Answer-Source': 'verified-savings',
+        'Cache-Control': 'no-store',
+      },
+    })
+  }
+
+  // A verified nominal projection cannot be safely rewritten by an LLM:
+  // some providers truncated amounts and exposed internal field paths.
+  // Use the same deterministic formatter as the client and chart.
+  if (body.context?.section === 'transactions' && requestedSpendingForecast(mostRecent?.content || '')) {
+    const context = body.context
+    const aggregate = context?.scope === 'forecast-query' ? context.spendingForecast : null
+    const horizon = Number(context?.selectedForecastMonths)
+    return new Response(formatVerifiedSpendingForecast(aggregate, mostRecent?.content, horizon), {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Lita-Answer-Source': 'verified-spending',
         'Cache-Control': 'no-store',
       },
     })

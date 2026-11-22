@@ -26,6 +26,7 @@ import { requestedFinancialPeriod } from '@/lib/financialPeriods'
 import { requestedSpendingForecast } from '@/lib/spendingForecast'
 import { formatVerifiedSpendingForecast } from '@/lib/verifiedSpendingAnswer'
 import { formatVerifiedSavingsAnswer, requestedSavingsEstimate } from '@/lib/savingsAnswer'
+import { FX_MARKETS, parseLiveFxQuotes, selectedFxQuote, fxMarketLabel, localFxNumber, type FxQuote, type FxMarket } from '@/lib/litaFxQuotes'
 import { parseCardsVisualReport, parseSpendingVisualReport, type VisualReport } from '@/lib/visualReport'
 import VisualForecastReport from '@/components/VisualForecastReport'
 import { assessFinancialScope } from '@/lib/financialScope'
@@ -308,6 +309,10 @@ export function Chat() {
   const lastSavedSignatureRef = useRef('')
   const pendingHistoricalRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
   const pendingForecastRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
+  const pendingFxRef = useRef<Map<string, (value: FxQuote[]) => void>>(new Map())
+  const [fxQuotes, setFxQuotes] = useState<FxQuote[]>([])
+  const [fxMarket, setFxMarket] = useState<FxMarket>('bolsa')
+  const [fxStatus, setFxStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle')
   const pendingIllustrationRef = useRef<Map<string, {
     resolve: (value: Blob) => void
     reject: (error: Error) => void
@@ -394,6 +399,8 @@ export function Chat() {
       ) {
         if (event.data.payload.privacyHidden === true ||
           currentHostContextRef.current?.section !== event.data.payload.section) {
+          setFxQuotes([])
+          setFxStatus('idle')
           setVisualReport(null)
           setReportError('')
         }
@@ -440,6 +447,18 @@ export function Chat() {
               ? reply.reason.slice(0, 500)
               : 'El dispositivo no devolvió una imagen PNG válida.'))
           }
+        }
+        return
+      }
+
+      if (event.data?.type === 'lita:fx:result') {
+        const reply = event.data.payload
+        const resolve = pendingFxRef.current.get(reply?.requestId)
+        if (resolve) {
+          pendingFxRef.current.delete(reply.requestId)
+          // Enforce exact trusted parent origin (above), market allowlist,
+          // time freshness and numeric bounds, even for malformed responses.
+          resolve(parseLiveFxQuotes(reply))
         }
         return
       }

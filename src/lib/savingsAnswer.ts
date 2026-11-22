@@ -4,7 +4,7 @@
  * The current visible transaction filter is not an income or monthly-average source.
  */
 
-import { selectedFxQuote, fxMarketLabel, localFxNumber, roundFx, type FxQuote } from './litaFxQuotes'
+import { selectedFxQuote, fxMarketLabel, localFxNumber, roundFx, type FxQuote } from './litaFxQuotes.ts'
 
 type Currency = 'ARS' | 'USD'
 type DataRecord = Record<string, unknown>

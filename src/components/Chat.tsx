@@ -26,7 +26,7 @@ import { requestedFinancialPeriod } from '@/lib/financialPeriods'
 import { requestedSpendingForecast } from '@/lib/spendingForecast'
 import { formatVerifiedSpendingForecast } from '@/lib/verifiedSpendingAnswer'
 import { formatVerifiedSavingsAnswer, requestedSavingsEstimate } from '@/lib/savingsAnswer'
-import { FX_MARKETS, parseLiveFxQuotes, selectedFxQuote, fxMarketLabel, localFxNumber, type FxQuote, type FxMarket } from '@/lib/litaFxQuotes'
+import { FX_MARKETS, parseLiveFxQuotes, selectedFxQuote, fxMarketLabel, localFxNumber, isFxQuoteLastClose, type FxQuote, type FxMarket } from '@/lib/litaFxQuotes'
 import { parseCardsVisualReport, parseSpendingVisualReport, type VisualReport } from '@/lib/visualReport'
 import VisualForecastReport from '@/components/VisualForecastReport'
 import { assessFinancialScope } from '@/lib/financialScope'
@@ -1229,7 +1229,8 @@ export function Chat() {
           <summary className="mx-auto flex min-h-9 w-full max-w-2xl cursor-pointer list-none items-center justify-between gap-2 rounded-md font-semibold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:text-slate-200">
             <span className="min-w-0 truncate">
               Cotización {fxMarketLabel(fxMarket)}
-              {activeFxQuote ? ' · Compra ' + localFxNumber(activeFxQuote.compra, 'ARS') :
+              {activeFxQuote ? ' · Compra ' + localFxNumber(activeFxQuote.compra, 'ARS') +
+                (isFxQuoteLastClose(activeFxQuote) ? ' · último cierre' : '') :
                 fxStatus === 'loading' ? ' · Consultando DolarAPI…' : ' · Sin dato vigente'}
             </span>
             <span className="shrink-0 text-violet-700 dark:text-violet-300">Cambiar mercado</span>
@@ -1253,7 +1254,8 @@ export function Chat() {
               {activeFxQuote
                 ? 'DolarAPI · compra ' + localFxNumber(activeFxQuote.compra, 'ARS') +
                   ' · venta ' + localFxNumber(activeFxQuote.venta, 'ARS') +
-                  ' · ' + new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short',
+                  (isFxQuoteLastClose(activeFxQuote) ? ' · Último cierre ' : ' · Actualizado ') +
+                  new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short',
                     timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(activeFxQuote.updatedAt))
                 : fxStatus === 'loading' ? 'Consultando cotizaciones…'
                   : 'Sin cotización vigente disponible. Tus saldos no se convierten.'}

@@ -26,6 +26,7 @@ import { requestedFinancialPeriod } from '@/lib/financialPeriods'
 import { requestedSpendingForecast } from '@/lib/spendingForecast'
 import { formatVerifiedSpendingForecast } from '@/lib/verifiedSpendingAnswer'
 import { formatVerifiedSavingsAnswer, requestedSavingsEstimate } from '@/lib/savingsAnswer'
+import { FX_MARKETS, parseLiveFxQuotes, selectedFxQuote, fxMarketLabel, localFxNumber, isFxQuoteLastClose, type FxQuote, type FxMarket } from '@/lib/litaFxQuotes'
 import { parseCardsVisualReport, parseSpendingVisualReport, type VisualReport } from '@/lib/visualReport'
 import VisualForecastReport from '@/components/VisualForecastReport'
 import { assessFinancialScope } from '@/lib/financialScope'
@@ -308,6 +309,10 @@ export function Chat() {
   const lastSavedSignatureRef = useRef('')
   const pendingHistoricalRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
   const pendingForecastRef = useRef<Map<string, (value: Record<string, unknown> | null) => void>>(new Map())
+  const pendingFxRef = useRef<Map<string, (value: FxQuote[]) => void>>(new Map())
+  const [fxQuotes, setFxQuotes] = useState<FxQuote[]>([])
+  const [fxMarket, setFxMarket] = useState<FxMarket>('bolsa')
+  const [fxStatus, setFxStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle')
   const pendingIllustrationRef = useRef<Map<string, {
     resolve: (value: Blob) => void
     reject: (error: Error) => void
@@ -394,6 +399,8 @@ export function Chat() {
       ) {
         if (event.data.payload.privacyHidden === true ||
           currentHostContextRef.current?.section !== event.data.payload.section) {
+          setFxQuotes([])
+          setFxStatus('idle')
           setVisualReport(null)
           setReportError('')
         }
@@ -440,6 +447,18 @@ export function Chat() {
               ? reply.reason.slice(0, 500)
               : 'El dispositivo no devolvió una imagen PNG válida.'))
           }
+        }
+        return
+      }
+
+      if (event.data?.type === 'lita:fx:result') {
+        const reply = event.data.payload
+        const resolve = pendingFxRef.current.get(reply?.requestId)
+        if (resolve) {
+          pendingFxRef.current.delete(reply.requestId)
+          // Enforce exact trusted parent origin (above), market allowlist,
+          // time freshness and numeric bounds, even for malformed responses.
+          resolve(parseLiveFxQuotes(reply))
         }
         return
       }
@@ -719,6 +738,49 @@ export function Chat() {
     })
   }
 
+  const requestFxQuotes = async (force = false): Promise<FxQuote[]> => {
+    const origin = parentOriginRef.current
+    if (!origin || window.parent === window ||
+        currentHostContextRef.current?.privacyHidden === true ||
+        currentHostContextRef.current?.section !== 'transactions') return []
+    const requestId = createChatId()
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        pendingFxRef.current.delete(requestId)
+        resolve([])
+      }, 10000)
+      pendingFxRef.current.set(requestId, (quotes) => {
+        window.clearTimeout(timer)
+        resolve(currentHostContextRef.current?.privacyHidden === true ? [] : quotes)
+      })
+      // Request only public prices. Never transmit user balances/transactions
+      // to the FX source or include them in the bridge request.
+      window.parent.postMessage({ type: 'lita:fx:request', payload: { requestId, refresh: force } }, origin)
+    })
+  }
+
+  const refreshFxQuotes = async () => {
+    setFxStatus('loading')
+    const quotes = await requestFxQuotes(true)
+    if (currentHostContextRef.current?.privacyHidden === true ||
+        currentHostContextRef.current?.section !== 'transactions') return
+    setFxQuotes(quotes)
+    setFxStatus(quotes.length ? 'ready' : 'unavailable')
+  }
+
+  useEffect(() => {
+    if (!hostConnected || financialContext?.section !== 'transactions' ||
+        financialContext?.privacyHidden === true) return
+    let active = true
+    setFxStatus('loading')
+    void requestFxQuotes().then((quotes) => {
+      if (!active || currentHostContextRef.current?.privacyHidden === true) return
+      setFxQuotes(quotes)
+      setFxStatus(quotes.length ? 'ready' : 'unavailable')
+    })
+    return () => { active = false }
+  }, [hostConnected, financialContext?.section, financialContext?.privacyHidden])
+
   const checkIllustrationCapability = async (): Promise<{ supported: boolean; reason: string }> => {
     const origin = parentOriginRef.current
     if (!origin || window.parent === window || currentHostContextRef.current?.privacyHidden === true) {
@@ -846,7 +908,11 @@ export function Chat() {
         if (requestedSavingsEstimate(question)) {
           // Never ask the LLM to invent missing income or confuse a filtered
           // transaction snapshot with a monthly savings forecast.
-          const answer = formatVerifiedSavingsAnswer(projection, forecast.months)
+          // Spot FX is optional. Never block or fabricate the financial
+          // answer when DolarAPI is offline or the selected market is missing.
+          const marketQuotes = fxQuotes.length ? fxQuotes : await requestFxQuotes()
+          const currentQuote = selectedFxQuote(marketQuotes, fxMarket)
+          const answer = formatVerifiedSavingsAnswer(projection, forecast.months, currentQuote)
           setMessages([
             ...messages,
             { id: createChatId(), role: 'user', content: question },
@@ -1025,6 +1091,8 @@ export function Chat() {
           ? banksPrompts
           : genericPrompts
 
+  const activeFxQuote = selectedFxQuote(fxQuotes, fxMarket)
+
   const forecastPrompts = financialContext?.section === 'transactions'
     ? transactionForecastPrompts
     : financialContext?.section === 'banks'
@@ -1156,6 +1224,48 @@ export function Chat() {
           Modo privacidad activo: LITA no recibe los importes ni el historial de esta pantalla. Para analizar tus datos, cerrá el chat y volvé a mostrar los importes en LTC.
         </div>
       )}
+      {financialContext?.section === 'transactions' && financialContext?.privacyHidden !== true && (
+        <details className="group shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs dark:border-slate-700 dark:bg-slate-900">
+          <summary className="mx-auto flex min-h-9 w-full max-w-2xl cursor-pointer list-none items-center justify-between gap-2 rounded-md font-semibold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:text-slate-200">
+            <span className="min-w-0 truncate">
+              Cotización {fxMarketLabel(fxMarket)}
+              {activeFxQuote ? ' · Compra ' + localFxNumber(activeFxQuote.compra, 'ARS') +
+                (isFxQuoteLastClose(activeFxQuote) ? ' · último cierre' : '') :
+                fxStatus === 'loading' ? ' · Consultando DolarAPI…' : ' · Sin dato vigente'}
+            </span>
+            <span className="shrink-0 text-violet-700 dark:text-violet-300">Cambiar mercado</span>
+          </summary>
+          <div className="mx-auto mt-2 flex w-full max-w-2xl flex-wrap items-center gap-2 pb-1">
+            <label htmlFor="lita-fx-market" className="font-medium text-slate-600 dark:text-slate-300">
+              Mercado
+            </label>
+            <select id="lita-fx-market" value={fxMarket}
+              onChange={(event) => setFxMarket(event.target.value as FxMarket)}
+              aria-label="Seleccionar mercado del dólar"
+              className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+              {FX_MARKETS.map((market) => (
+                <option key={market.key} value={market.key}>{market.label}</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => void refreshFxQuotes()} disabled={fxStatus === 'loading'}
+              className="min-h-11 rounded-xl border border-slate-300 px-3 font-semibold text-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50 dark:border-slate-600 dark:text-violet-200"
+              aria-label="Actualizar cotizaciones del dólar">Actualizar</button>
+            <span role="status" className="w-full text-slate-600 dark:text-slate-300">
+              {activeFxQuote
+                ? 'DolarAPI · compra ' + localFxNumber(activeFxQuote.compra, 'ARS') +
+                  ' · venta ' + localFxNumber(activeFxQuote.venta, 'ARS') +
+                  (isFxQuoteLastClose(activeFxQuote) ? ' · Último cierre ' : ' · Actualizado ') +
+                  new Intl.DateTimeFormat('es-AR', { dateStyle: 'short', timeStyle: 'short',
+                    timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date(activeFxQuote.updatedAt))
+                : fxStatus === 'loading' ? 'Consultando cotizaciones…'
+                  : 'Sin cotización vigente disponible. Tus saldos no se convierten.'}
+            </span>
+            <p className="w-full text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+              Al valorar USD como pesos se usa precio comprador. La selección afecta nuevas respuestas, nunca tus transacciones.
+            </p>
+          </div>
+        </details>
+      )}
       {reportError && (
         <div role="alert" className="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-slate-900 dark:text-amber-200">
           {reportError}
@@ -1260,6 +1370,12 @@ export function Chat() {
               const displayContent = isUser ? message.content :
                 sanitizeAssistantOutput(message.content) ||
                 'La respuesta anterior no contenía un resultado final seguro. Podés pedirle a LITA que continúe el análisis.'
+              const detailSeparator = '\n\n--- DETALLE DEL CÁLCULO ---\n\n'
+              const detailsIndex = isUser ? -1 : displayContent.indexOf(detailSeparator)
+              const compactAnswer = detailsIndex >= 0
+                ? displayContent.slice(0, detailsIndex) : displayContent
+              const methodology = detailsIndex >= 0
+                ? displayContent.slice(detailsIndex + detailSeparator.length) : null
               const isStreamingAssistant =
                 isLoading &&
                 index === messages.length - 1 &&
@@ -1297,8 +1413,20 @@ export function Chat() {
                           caret="circle"
                           isAnimating={isStreamingAssistant}
                         >
-                          {displayContent}
+                          {compactAnswer}
                         </Streamdown>
+                        {methodology && (
+                          <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-900/60">
+                            <summary className="cursor-pointer select-none text-sm font-semibold text-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:text-violet-300">
+                              Ver detalles del cálculo y supuestos
+                            </summary>
+                            <div className="lita-markdown mt-3 min-w-0 text-xs leading-relaxed">
+                              <Streamdown components={markdownComponents}>
+                                {methodology}
+                              </Streamdown>
+                            </div>
+                          </details>
+                        )}
                         {!isLoading && verifiedSpending &&
                           index === messages.length - 1 &&
                           /gast|egres|consum|dinero|presupuesto|categor[ií]a/i.test(

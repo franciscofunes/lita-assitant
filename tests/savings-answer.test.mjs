@@ -168,7 +168,7 @@ test('empty and invalid data never becomes zero balances or fabricated savings',
 test('client and API still do not route baseline savings through LLM providers', () => {
   const chat = readFileSync(new URL('../src/components/Chat.tsx', import.meta.url), 'utf8')
   const route = readFileSync(new URL('../src/app/api/chat/route.ts', import.meta.url), 'utf8')
-  assert.match(chat, /formatVerifiedSavingsAnswer\(projection, forecast\.months\)/)
+  assert.match(chat, /formatVerifiedSavingsAnswer\(projection, forecast\.months, currentQuote\)/)
   assert.match(chat, /!requestedSavingsEstimate\(/)
   assert.match(route, /X-Lita-Answer-Source': 'verified-savings'/)
   assert.ok(route.indexOf('if (requestedSavingsEstimate(mostRecent?.content))') <
